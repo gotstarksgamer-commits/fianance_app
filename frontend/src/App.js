@@ -94,6 +94,7 @@ const Navigation = () => {
 // Dashboard Component
 const Dashboard = () => {
   const [dashboardData, setDashboardData] = useState(null);
+  const [completeDashboard, setCompleteDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -102,8 +103,12 @@ const Dashboard = () => {
 
   const fetchDashboardData = async () => {
     try {
-      const response = await axios.get(`${API}/dashboard`);
-      setDashboardData(response.data);
+      const [basicResponse, completeResponse] = await Promise.all([
+        axios.get(`${API}/dashboard`),
+        axios.get(`${API}/dashboard/complete`)
+      ]);
+      setDashboardData(basicResponse.data);
+      setCompleteDashboard(completeResponse.data);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
       toast.error('Failed to load dashboard data');
