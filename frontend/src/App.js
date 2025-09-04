@@ -1613,6 +1613,597 @@ const Goals = () => {
   );
 };
 
+// Investments Component
+const Investments = () => {
+  const [investments, setInvestments] = useState([]);
+  const [newInvestment, setNewInvestment] = useState({
+    investment_type: '',
+    name: '',
+    amount: '',
+    date: new Date().toISOString().split('T')[0],
+    maturity_date: '',
+    interest_rate: '',
+    is_recurring: false,
+    frequency: ''
+  });
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    fetchInvestments();
+  }, []);
+
+  const fetchInvestments = async () => {
+    try {
+      const response = await axios.get(`${API}/investments`);
+      setInvestments(response.data);
+    } catch (error) {
+      console.error('Error fetching investments:', error);
+      toast.error('Failed to load investments');
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!newInvestment.investment_type || !newInvestment.name || !newInvestment.amount) {
+      toast.error('Please fill in required fields');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await axios.post(`${API}/investments`, {
+        investment_type: newInvestment.investment_type,
+        name: newInvestment.name,
+        amount: parseFloat(newInvestment.amount),
+        date: newInvestment.date,
+        maturity_date: newInvestment.maturity_date || null,
+        interest_rate: newInvestment.interest_rate ? parseFloat(newInvestment.interest_rate) : null,
+        is_recurring: newInvestment.is_recurring,
+        frequency: newInvestment.is_recurring ? newInvestment.frequency : null
+      });
+      
+      toast.success('Investment added successfully');
+      setNewInvestment({
+        investment_type: '',
+        name: '',
+        amount: '',
+        date: new Date().toISOString().split('T')[0],
+        maturity_date: '',
+        interest_rate: '',
+        is_recurring: false,
+        frequency: ''
+      });
+      fetchInvestments();
+    } catch (error) {
+      console.error('Error adding investment:', error);
+      toast.error('Failed to add investment');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  const totalInvestments = investments.reduce((sum, inv) => sum + inv.amount, 0);
+
+  const investmentTypes = [
+    'SIP', 'Mutual Fund', 'Fixed Deposit', 'Stock', 'Bond', 'Gold', 'PPF', 'ELSS', 'NPS', 'Other'
+  ];
+
+  const investmentsByType = investments.reduce((acc, inv) => {
+    acc[inv.investment_type] = (acc[inv.investment_type] || 0) + inv.amount;
+    return acc;
+  }, {});
+
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <div className="mb-8">
+        <h2 className="text-3xl font-bold text-gray-800 mb-2">Investment Portfolio</h2>
+        <p className="text-gray-600">Track and manage your investments</p>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Add Investment Form */}
+        <Card className="lg:col-span-1">
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <TrendingUp className="h-5 w-5 text-blue-600" />
+              <span>Add Investment</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <Label htmlFor="investment_type">Type *</Label>
+                <Select
+                  value={newInvestment.investment_type}
+                  onValueChange={(value) => setNewInvestment({...newInvestment, investment_type: value})}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select investment type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {investmentTypes.map((type) => (
+                      <SelectItem key={type} value={type}>
+                        {type}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="name">Name *</Label>
+                <Input
+                  id="name"
+                  placeholder="e.g., HDFC Top 100 Fund"
+                  value={newInvestment.name}
+                  onChange={(e) => setNewInvestment({...newInvestment, name: e.target.value})}
+                  required
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="amount">Amount *</Label>
+                <Input
+                  id="amount"
+                  type="number"
+                  placeholder="Enter amount"
+                  value={newInvestment.amount}
+                  onChange={(e) => setNewInvestment({...newInvestment, amount: e.target.value})}
+                  required
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="date">Date *</Label>
+                <Input
+                  id="date"
+                  type="date"
+                  value={newInvestment.date}
+                  onChange={(e) => setNewInvestment({...newInvestment, date: e.target.value})}
+                  required
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="maturity_date">Maturity Date</Label>
+                <Input
+                  id="maturity_date"
+                  type="date"
+                  value={newInvestment.maturity_date}
+                  onChange={(e) => setNewInvestment({...newInvestment, maturity_date: e.target.value})}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="interest_rate">Expected Return (%)</Label>
+                <Input
+                  id="interest_rate"
+                  type="number"
+                  step="0.1"
+                  placeholder="e.g., 12.5"
+                  value={newInvestment.interest_rate}
+                  onChange={(e) => setNewInvestment({...newInvestment, interest_rate: e.target.value})}
+                />
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="recurring"
+                  checked={newInvestment.is_recurring}
+                  onChange={(e) => setNewInvestment({...newInvestment, is_recurring: e.target.checked})}
+                  className="rounded"
+                />
+                <Label htmlFor="recurring">Recurring Investment</Label>
+              </div>
+
+              {newInvestment.is_recurring && (
+                <div>
+                  <Label htmlFor="frequency">Frequency</Label>
+                  <Select
+                    value={newInvestment.frequency}
+                    onValueChange={(value) => setNewInvestment({...newInvestment, frequency: value})}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select frequency" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="weekly">Weekly</SelectItem>
+                      <SelectItem value="monthly">Monthly</SelectItem>
+                      <SelectItem value="yearly">Yearly</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              <Button 
+                type="submit" 
+                className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                disabled={loading}
+              >
+                {loading ? 'Adding...' : 'Add Investment'}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        {/* Investments Overview */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Portfolio Summary */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Portfolio Summary</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="text-center p-4 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-blue-700 font-medium">Total Investments</p>
+                  <p className="text-2xl font-bold text-blue-800">
+                    {formatCurrency(totalInvestments)}
+                  </p>
+                </div>
+                <div className="text-center p-4 bg-green-50 rounded-lg">
+                  <p className="text-sm text-green-700 font-medium">Investment Types</p>
+                  <p className="text-2xl font-bold text-green-800">
+                    {Object.keys(investmentsByType).length}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Investment Breakdown */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Investment Breakdown</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {Object.entries(investmentsByType).map(([type, amount]) => (
+                  <div key={type} className="flex items-center justify-between">
+                    <span className="text-sm font-medium">{type}</span>
+                    <Badge variant="outline">{formatCurrency(amount)}</Badge>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Recent Investments */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent Investments</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {investments.length === 0 ? (
+                  <p className="text-center text-gray-500 py-8">No investments recorded yet</p>
+                ) : (
+                  investments.slice(0, 10).map((investment) => (
+                    <div key={investment.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2">
+                          <Badge variant="outline">{investment.investment_type}</Badge>
+                          {investment.is_recurring && (
+                            <Badge variant="secondary">Recurring</Badge>
+                          )}
+                        </div>
+                        <p className="font-medium mt-1">{investment.name}</p>
+                        <p className="text-xs text-gray-500">{investment.date}</p>
+                        {investment.interest_rate && (
+                          <p className="text-xs text-green-600">Expected: {investment.interest_rate}%</p>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-semibold text-blue-600">
+                          {formatCurrency(investment.amount)}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Budget Management Component
+const Budgets = () => {
+  const [budgets, setBudgets] = useState([]);
+  const [newBudget, setNewBudget] = useState({
+    category: '',
+    monthly_limit: '',
+    alert_threshold: 80
+  });
+  const [loading, setLoading] = useState(false);
+  const [categories, setCategories] = useState({});
+
+  useEffect(() => {
+    fetchBudgets();
+    fetchCategories();
+  }, []);
+
+  const fetchBudgets = async () => {
+    try {
+      const response = await axios.get(`${API}/budgets`);
+      setBudgets(response.data);
+    } catch (error) {
+      console.error('Error fetching budgets:', error);
+      toast.error('Failed to load budgets');
+    }
+  };
+
+  const fetchCategories = async () => {
+    try {
+      const response = await axios.get(`${API}/categories`);
+      setCategories(response.data.categories);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!newBudget.category || !newBudget.monthly_limit) {
+      toast.error('Please fill in required fields');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await axios.post(`${API}/budgets`, {
+        category: newBudget.category,
+        monthly_limit: parseFloat(newBudget.monthly_limit),
+        alert_threshold: newBudget.alert_threshold
+      });
+      
+      toast.success('Budget created successfully');
+      setNewBudget({
+        category: '',
+        monthly_limit: '',
+        alert_threshold: 80
+      });
+      fetchBudgets();
+    } catch (error) {
+      console.error('Error creating budget:', error);
+      toast.error('Failed to create budget');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  const totalBudget = budgets.reduce((sum, budget) => sum + budget.monthly_limit, 0);
+  const totalSpent = budgets.reduce((sum, budget) => sum + budget.current_spent, 0);
+  const budgetAlerts = budgets.filter(budget => budget.percentage_used >= budget.alert_threshold);
+
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <div className="mb-8">
+        <h2 className="text-3xl font-bold text-gray-800 mb-2">Budget Management</h2>
+        <p className="text-gray-600">Set and monitor spending limits by category</p>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Add Budget Form */}
+        <Card className="lg:col-span-1">
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <BarChart3 className="h-5 w-5 text-purple-600" />
+              <span>Set Budget</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <Label htmlFor="category">Category *</Label>
+                <Select
+                  value={newBudget.category}
+                  onValueChange={(value) => setNewBudget({...newBudget, category: value})}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.keys(categories).map((category) => (
+                      <SelectItem key={category} value={category}>
+                        {category}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="monthly_limit">Monthly Limit *</Label>
+                <Input
+                  id="monthly_limit"
+                  type="number"
+                  placeholder="Enter monthly limit"
+                  value={newBudget.monthly_limit}
+                  onChange={(e) => setNewBudget({...newBudget, monthly_limit: e.target.value})}
+                  required
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="alert_threshold">Alert Threshold (%)</Label>
+                <Input
+                  id="alert_threshold"
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={newBudget.alert_threshold}
+                  onChange={(e) => setNewBudget({...newBudget, alert_threshold: parseInt(e.target.value)})}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Get alerts when spending reaches this percentage
+                </p>
+              </div>
+
+              <Button 
+                type="submit" 
+                className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700"
+                disabled={loading}
+              >
+                {loading ? 'Setting...' : 'Set Budget'}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        {/* Budget Overview */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Summary */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Budget Overview</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="text-center p-4 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-blue-700 font-medium">Total Budget</p>
+                  <p className="text-xl font-bold text-blue-800">
+                    {formatCurrency(totalBudget)}
+                  </p>
+                </div>
+                <div className="text-center p-4 bg-red-50 rounded-lg">
+                  <p className="text-sm text-red-700 font-medium">Total Spent</p>
+                  <p className="text-xl font-bold text-red-800">
+                    {formatCurrency(totalSpent)}
+                  </p>
+                </div>
+                <div className="text-center p-4 bg-green-50 rounded-lg">
+                  <p className="text-sm text-green-700 font-medium">Remaining</p>
+                  <p className="text-xl font-bold text-green-800">
+                    {formatCurrency(totalBudget - totalSpent)}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Budget Alerts */}
+          {budgetAlerts.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <AlertTriangle className="h-5 w-5 text-orange-500" />
+                  <span>Budget Alerts</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {budgetAlerts.map((budget) => (
+                    <div key={budget.id} className="flex items-center justify-between p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                      <div>
+                        <p className="font-medium text-orange-800">{budget.category}</p>
+                        <p className="text-sm text-orange-600">
+                          {budget.percentage_used.toFixed(1)}% of budget used
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-medium text-orange-800">
+                          {formatCurrency(budget.current_spent)} / {formatCurrency(budget.monthly_limit)}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Budget Details */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Budget Details</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                {budgets.length === 0 ? (
+                  <p className="text-center text-gray-500 py-8">No budgets set yet. Create your first budget!</p>
+                ) : (
+                  budgets.map((budget) => (
+                    <div key={budget.id} className="p-4 border rounded-lg">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <h3 className="font-semibold text-gray-800">{budget.category}</h3>
+                          <div className="flex items-center space-x-2 mt-1">
+                            {budget.is_over_budget ? (
+                              <Badge variant="destructive">Over Budget</Badge>
+                            ) : budget.percentage_used >= budget.alert_threshold ? (
+                              <Badge variant="outline" className="border-orange-500 text-orange-600">
+                                Alert Zone
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="border-green-500 text-green-600">
+                                On Track
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-lg font-semibold">
+                            {formatCurrency(budget.current_spent)} / {formatCurrency(budget.monthly_limit)}
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            {budget.percentage_used.toFixed(1)}% used
+                          </p>
+                        </div>
+                      </div>
+                      
+                      {/* Progress Bar */}
+                      <div className="w-full bg-gray-200 rounded-full h-3">
+                        <div 
+                          className={`h-3 rounded-full transition-all duration-300 ${
+                            budget.is_over_budget 
+                              ? 'bg-red-500' 
+                              : budget.percentage_used >= budget.alert_threshold
+                              ? 'bg-orange-500'
+                              : 'bg-green-500'
+                          }`}
+                          style={{ width: `${Math.min(budget.percentage_used, 100)}%` }}
+                        ></div>
+                      </div>
+                      
+                      <div className="flex justify-between text-sm text-gray-600 mt-2">
+                        <span>Remaining: {formatCurrency(budget.remaining)}</span>
+                        <span>Alert at: {budget.alert_threshold}%</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Main App Component
 function App() {
   return (
