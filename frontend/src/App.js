@@ -255,8 +255,8 @@ const Dashboard = () => {
         </Card>
       )}
 
-      {/* Category Breakdown */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Financial Overview */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card>
           <CardHeader>
             <CardTitle>Spending by Category</CardTitle>
@@ -275,11 +275,33 @@ const Dashboard = () => {
 
         <Card>
           <CardHeader>
+            <CardTitle>Investment Portfolio</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {completeDashboard?.investment_breakdown && Object.keys(completeDashboard.investment_breakdown).length > 0 ? (
+                Object.entries(completeDashboard.investment_breakdown).map(([type, amount]) => (
+                  <div key={type} className="flex items-center justify-between">
+                    <span className="text-sm font-medium">{type}</span>
+                    <Badge variant="outline" className="border-blue-500 text-blue-600">
+                      {formatCurrency(amount)}
+                    </Badge>
+                  </div>
+                ))
+              ) : (
+                <p className="text-center text-gray-500 py-4">No investments yet</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle>Recent Transactions</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {dashboardData?.recent_transactions?.slice(0, 8).map((transaction, index) => (
+              {dashboardData?.recent_transactions?.slice(0, 6).map((transaction, index) => (
                 <div key={index} className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium">{transaction.category}</p>
