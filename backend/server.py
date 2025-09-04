@@ -185,6 +185,102 @@ class AIAnalysisResponse(BaseModel):
     confidence: float = 0.85
     analysis_type: str
 
+class IncomeCreate(BaseModel):
+    amount: float
+    source: str
+    description: Optional[str] = None
+    date: str  # Format: YYYY-MM-DD
+    is_recurring: bool = False
+    frequency: Optional[str] = None  # monthly, weekly, yearly
+
+class IncomeResponse(BaseModel):
+    id: str
+    amount: float
+    source: str
+    description: Optional[str] = None
+    date: str
+    is_recurring: bool
+    frequency: Optional[str] = None
+    created_at: str
+
+class SavingsGoalCreate(BaseModel):
+    goal_name: str
+    target_amount: float
+    current_amount: float = 0
+    target_date: Optional[str] = None
+    description: Optional[str] = None
+
+class SavingsGoalResponse(BaseModel):
+    id: str
+    goal_name: str
+    target_amount: float
+    current_amount: float
+    target_date: Optional[str] = None
+    description: Optional[str] = None
+    progress_percentage: float
+    created_at: str
+
+class InvestmentCreate(BaseModel):
+    investment_type: str  # SIP, FD, Mutual Fund, Stock, Gold, etc.
+    name: str
+    amount: float
+    date: str
+    maturity_date: Optional[str] = None
+    interest_rate: Optional[float] = None
+    is_recurring: bool = False
+    frequency: Optional[str] = None
+
+class InvestmentResponse(BaseModel):
+    id: str
+    investment_type: str
+    name: str
+    amount: float
+    date: str
+    maturity_date: Optional[str] = None
+    interest_rate: Optional[float] = None
+    is_recurring: bool
+    frequency: Optional[str] = None
+    created_at: str
+
+class BudgetCreate(BaseModel):
+    category: str
+    monthly_limit: float
+    alert_threshold: float = 80.0  # Alert when 80% of budget is used
+
+class BudgetResponse(BaseModel):
+    id: str
+    category: str
+    monthly_limit: float
+    current_spent: float
+    remaining: float
+    alert_threshold: float
+    percentage_used: float
+    is_over_budget: bool
+    created_at: str
+
+class RecurringTransactionCreate(BaseModel):
+    transaction_type: str  # expense, income, investment
+    amount: float
+    category: str
+    description: str
+    frequency: str  # monthly, weekly, yearly
+    start_date: str
+    end_date: Optional[str] = None
+    is_active: bool = True
+
+class RecurringTransactionResponse(BaseModel):
+    id: str
+    transaction_type: str
+    amount: float
+    category: str
+    description: str
+    frequency: str
+    start_date: str
+    end_date: Optional[str] = None
+    is_active: bool
+    next_due_date: str
+    created_at: str
+
 # Utility Functions
 def calculate_emi(principal: float, rate: float, tenure: int) -> dict:
     """Calculate EMI and related values"""
