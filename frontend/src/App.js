@@ -28,7 +28,11 @@ import {
   Plus,
   DollarSign,
   Target,
-  Wallet
+  Wallet,
+  MessageCircle,
+  Send,
+  Brain,
+  Lightbulb
 } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
