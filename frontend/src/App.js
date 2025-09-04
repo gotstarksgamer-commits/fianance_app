@@ -47,6 +47,8 @@ const Navigation = () => {
     { path: '/loans', label: 'Loan Calculator', icon: Calculator },
     { path: '/expenses', label: 'Expenses', icon: Receipt },
     { path: '/income', label: 'Income', icon: DollarSign },
+    { path: '/investments', label: 'Investments', icon: TrendingUp },
+    { path: '/budgets', label: 'Budgets', icon: Target },
     { path: '/goals', label: 'Goals', icon: Target },
     { path: '/ai-chat', label: 'AI Assistant', icon: Brain }
   ];
