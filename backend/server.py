@@ -904,6 +904,497 @@ def extract_recommendations_from_analysis(analysis_text: str) -> List[str]:
     
     return recommendations[:5]  # Return max 5 recommendations
 
+# Income Management Endpoints
+@api_router.post("/income", response_model=IncomeResponse)
+async def create_income(income: IncomeCreate):
+    """Create a new income record"""
+    try:
+        income_id = str(uuid.uuid4())
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT INTO income (id, amount, source, description, date, is_recurring, frequency)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            income_id, income.amount, income.source, income.description,
+            income.date, income.is_recurring, income.frequency
+        ))
+        
+        conn.commit()
+        conn.close()
+        
+        return IncomeResponse(
+            id=income_id,
+            amount=income.amount,
+            source=income.source,
+            description=income.description,
+            date=income.date,
+            is_recurring=income.is_recurring,
+            frequency=income.frequency,
+            created_at=datetime.now(timezone.utc).isoformat()
+        )
+        
+    except Exception as e:
+        logging.error(f"Error creating income: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create income")
+
+@api_router.get("/income", response_model=List[IncomeResponse])
+async def get_income():
+    """Get all income records"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT * FROM income ORDER BY date DESC, created_at DESC')
+        income_records = cursor.fetchall()
+        conn.close()
+        
+        result = []
+        for record in income_records:
+            result.append(IncomeResponse(
+                id=record['id'],
+                amount=record['amount'],
+                source=record['source'],
+                description=record['description'],
+                date=record['date'],
+                is_recurring=record['is_recurring'],
+                frequency=record['frequency'],
+                created_at=record['created_at']
+            ))
+        
+        return result
+        
+    except Exception as e:
+        logging.error(f"Error fetching income: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch income")
+
+# Savings Goals Endpoints
+@api_router.post("/savings-goals", response_model=SavingsGoalResponse)
+async def create_savings_goal(goal: SavingsGoalCreate):
+    """Create a new savings goal"""
+    try:
+        goal_id = str(uuid.uuid4())
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT INTO savings_goals (id, goal_name, target_amount, current_amount, target_date, description)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (
+            goal_id, goal.goal_name, goal.target_amount, goal.current_amount,
+            goal.target_date, goal.description
+        ))
+        
+        conn.commit()
+        conn.close()
+        
+        progress_percentage = (goal.current_amount / goal.target_amount) * 100 if goal.target_amount > 0 else 0
+        
+        return SavingsGoalResponse(
+            id=goal_id,
+            goal_name=goal.goal_name,
+            target_amount=goal.target_amount,
+            current_amount=goal.current_amount,
+            target_date=goal.target_date,
+            description=goal.description,
+            progress_percentage=round(progress_percentage, 2),
+            created_at=datetime.now(timezone.utc).isoformat()
+        )
+        
+    except Exception as e:
+        logging.error(f"Error creating savings goal: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create savings goal")
+
+@api_router.get("/savings-goals", response_model=List[SavingsGoalResponse])
+async def get_savings_goals():
+    """Get all savings goals"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT * FROM savings_goals ORDER BY created_at DESC')
+        goals = cursor.fetchall()
+        conn.close()
+        
+        result = []
+        for goal in goals:
+            progress_percentage = (goal['current_amount'] / goal['target_amount']) * 100 if goal['target_amount'] > 0 else 0
+            result.append(SavingsGoalResponse(
+                id=goal['id'],
+                goal_name=goal['goal_name'],
+                target_amount=goal['target_amount'],
+                current_amount=goal['current_amount'],
+                target_date=goal['target_date'],
+                description=goal['description'],
+                progress_percentage=round(progress_percentage, 2),
+                created_at=goal['created_at']
+            ))
+        
+        return result
+        
+    except Exception as e:
+        logging.error(f"Error fetching savings goals: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch savings goals")
+
+@api_router.put("/savings-goals/{goal_id}/progress")
+async def update_savings_goal_progress(goal_id: str, amount: float):
+    """Update progress on a savings goal"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE savings_goals 
+            SET current_amount = current_amount + ?
+            WHERE id = ?
+        ''', (amount, goal_id))
+        
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Savings goal not found")
+            
+        conn.commit()
+        conn.close()
+        
+        return {"message": "Savings goal updated successfully"}
+        
+    except Exception as e:
+        logging.error(f"Error updating savings goal: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update savings goal")
+
+# Investment Management Endpoints
+@api_router.post("/investments", response_model=InvestmentResponse)
+async def create_investment(investment: InvestmentCreate):
+    """Create a new investment record"""
+    try:
+        investment_id = str(uuid.uuid4())
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT INTO investments (id, investment_type, name, amount, date, 
+                                   maturity_date, interest_rate, is_recurring, frequency)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            investment_id, investment.investment_type, investment.name, 
+            investment.amount, investment.date, investment.maturity_date,
+            investment.interest_rate, investment.is_recurring, investment.frequency
+        ))
+        
+        conn.commit()
+        conn.close()
+        
+        return InvestmentResponse(
+            id=investment_id,
+            investment_type=investment.investment_type,
+            name=investment.name,
+            amount=investment.amount,
+            date=investment.date,
+            maturity_date=investment.maturity_date,
+            interest_rate=investment.interest_rate,
+            is_recurring=investment.is_recurring,
+            frequency=investment.frequency,
+            created_at=datetime.now(timezone.utc).isoformat()
+        )
+        
+    except Exception as e:
+        logging.error(f"Error creating investment: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create investment")
+
+@api_router.get("/investments", response_model=List[InvestmentResponse])
+async def get_investments():
+    """Get all investment records"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT * FROM investments ORDER BY date DESC, created_at DESC')
+        investments = cursor.fetchall()
+        conn.close()
+        
+        result = []
+        for investment in investments:
+            result.append(InvestmentResponse(
+                id=investment['id'],
+                investment_type=investment['investment_type'],
+                name=investment['name'],
+                amount=investment['amount'],
+                date=investment['date'],
+                maturity_date=investment['maturity_date'],
+                interest_rate=investment['interest_rate'],
+                is_recurring=investment['is_recurring'],
+                frequency=investment['frequency'],
+                created_at=investment['created_at']
+            ))
+        
+        return result
+        
+    except Exception as e:
+        logging.error(f"Error fetching investments: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch investments")
+
+# Budget Management Endpoints
+@api_router.post("/budgets", response_model=BudgetResponse)
+async def create_budget(budget: BudgetCreate):
+    """Create or update a budget for a category"""
+    try:
+        budget_id = str(uuid.uuid4())
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check if budget already exists for this category
+        cursor.execute('SELECT id FROM budgets WHERE category = ?', (budget.category,))
+        existing = cursor.fetchone()
+        
+        if existing:
+            # Update existing budget
+            cursor.execute('''
+                UPDATE budgets 
+                SET monthly_limit = ?, alert_threshold = ?
+                WHERE category = ?
+            ''', (budget.monthly_limit, budget.alert_threshold, budget.category))
+            budget_id = existing['id']
+        else:
+            # Create new budget
+            cursor.execute('''
+                INSERT INTO budgets (id, category, monthly_limit, alert_threshold)
+                VALUES (?, ?, ?, ?)
+            ''', (budget_id, budget.category, budget.monthly_limit, budget.alert_threshold))
+        
+        conn.commit()
+        
+        # Get current month's spending for this category
+        cursor.execute('''
+            SELECT SUM(amount) as spent
+            FROM expenses 
+            WHERE category = ? AND strftime('%Y-%m', date) = strftime('%Y-%m', 'now')
+        ''', (budget.category,))
+        
+        spent_result = cursor.fetchone()
+        current_spent = spent_result['spent'] or 0
+        
+        conn.close()
+        
+        remaining = budget.monthly_limit - current_spent
+        percentage_used = (current_spent / budget.monthly_limit) * 100 if budget.monthly_limit > 0 else 0
+        is_over_budget = current_spent > budget.monthly_limit
+        
+        return BudgetResponse(
+            id=budget_id,
+            category=budget.category,
+            monthly_limit=budget.monthly_limit,
+            current_spent=current_spent,
+            remaining=remaining,
+            alert_threshold=budget.alert_threshold,
+            percentage_used=round(percentage_used, 2),
+            is_over_budget=is_over_budget,
+            created_at=datetime.now(timezone.utc).isoformat()
+        )
+        
+    except Exception as e:
+        logging.error(f"Error creating budget: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create budget")
+
+@api_router.get("/budgets", response_model=List[BudgetResponse])
+async def get_budgets():
+    """Get all budgets with current spending"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT * FROM budgets ORDER BY category')
+        budgets = cursor.fetchall()
+        
+        result = []
+        for budget in budgets:
+            # Get current month's spending for this category
+            cursor.execute('''
+                SELECT SUM(amount) as spent
+                FROM expenses 
+                WHERE category = ? AND strftime('%Y-%m', date) = strftime('%Y-%m', 'now')
+            ''', (budget['category'],))
+            
+            spent_result = cursor.fetchone()
+            current_spent = spent_result['spent'] or 0
+            
+            remaining = budget['monthly_limit'] - current_spent
+            percentage_used = (current_spent / budget['monthly_limit']) * 100 if budget['monthly_limit'] > 0 else 0
+            is_over_budget = current_spent > budget['monthly_limit']
+            
+            result.append(BudgetResponse(
+                id=budget['id'],
+                category=budget['category'],
+                monthly_limit=budget['monthly_limit'],
+                current_spent=current_spent,
+                remaining=remaining,
+                alert_threshold=budget['alert_threshold'],
+                percentage_used=round(percentage_used, 2),
+                is_over_budget=is_over_budget,
+                created_at=budget['created_at']
+            ))
+        
+        conn.close()
+        return result
+        
+    except Exception as e:
+        logging.error(f"Error fetching budgets: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch budgets")
+
+# File Upload Endpoint
+@api_router.post("/upload-receipt/{expense_id}")
+async def upload_receipt(expense_id: str, file: UploadFile = File(...)):
+    """Upload receipt for an expense"""
+    try:
+        # Create uploads directory if it doesn't exist
+        upload_dir = ROOT_DIR / "uploads" / "receipts"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Generate unique filename
+        file_extension = file.filename.split('.')[-1] if '.' in file.filename else 'jpg'
+        unique_filename = f"{expense_id}_{uuid.uuid4().hex[:8]}.{file_extension}"
+        file_path = upload_dir / unique_filename
+        
+        # Save file
+        with open(file_path, "wb") as buffer:
+            content = await file.read()
+            buffer.write(content)
+        
+        # Update expense record
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE expenses 
+            SET receipt_path = ?
+            WHERE id = ?
+        ''', (str(file_path), expense_id))
+        
+        # Save receipt record
+        receipt_id = str(uuid.uuid4())
+        cursor.execute('''
+            INSERT INTO receipts (id, expense_id, file_name, file_path, file_size)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (receipt_id, expense_id, file.filename, str(file_path), len(content)))
+        
+        conn.commit()
+        conn.close()
+        
+        return {
+            "message": "Receipt uploaded successfully",
+            "receipt_id": receipt_id,
+            "filename": unique_filename
+        }
+        
+    except Exception as e:
+        logging.error(f"Error uploading receipt: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to upload receipt")
+
+# Enhanced Dashboard with all data
+@api_router.get("/dashboard/complete")
+async def get_complete_dashboard():
+    """Get comprehensive dashboard data"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Basic financial data
+        cursor.execute('SELECT SUM(amount) as total FROM expenses')
+        total_expenses = cursor.fetchone()['total'] or 0
+        
+        cursor.execute('SELECT SUM(amount) as total FROM income')
+        total_income = cursor.fetchone()['total'] or 0
+        
+        cursor.execute('SELECT SUM(amount) as total FROM investments')
+        total_investments = cursor.fetchone()['total'] or 0
+        
+        # Savings goals progress
+        cursor.execute('SELECT COUNT(*) as count, SUM(current_amount) as saved, SUM(target_amount) as target FROM savings_goals')
+        goals_data = cursor.fetchone()
+        
+        # Budget alerts
+        cursor.execute('''
+            SELECT b.category, b.monthly_limit, b.alert_threshold,
+                   COALESCE(SUM(e.amount), 0) as spent
+            FROM budgets b
+            LEFT JOIN expenses e ON b.category = e.category 
+                AND strftime('%Y-%m', e.date) = strftime('%Y-%m', 'now')
+            GROUP BY b.category, b.monthly_limit, b.alert_threshold
+        ''')
+        budget_data = cursor.fetchall()
+        
+        budget_alerts = []
+        for budget in budget_data:
+            percentage = (budget['spent'] / budget['monthly_limit']) * 100 if budget['monthly_limit'] > 0 else 0
+            if percentage >= budget['alert_threshold']:
+                budget_alerts.append({
+                    "category": budget['category'],
+                    "spent": budget['spent'],
+                    "limit": budget['monthly_limit'],
+                    "percentage": round(percentage, 2)
+                })
+        
+        # Investment breakdown
+        cursor.execute('''
+            SELECT investment_type, SUM(amount) as total
+            FROM investments
+            GROUP BY investment_type
+            ORDER BY total DESC
+        ''')
+        investment_breakdown = {row['investment_type']: row['total'] for row in cursor.fetchall()}
+        
+        conn.close()
+        
+        return {
+            "total_income": total_income,
+            "total_expenses": total_expenses,
+            "total_investments": total_investments,
+            "net_worth": total_income - total_expenses + total_investments,
+            "savings_goals": {
+                "count": goals_data['count'] or 0,
+                "saved": goals_data['saved'] or 0,
+                "target": goals_data['target'] or 0,
+                "progress": ((goals_data['saved'] or 0) / (goals_data['target'] or 1)) * 100
+            },
+            "budget_alerts": budget_alerts,
+            "investment_breakdown": investment_breakdown
+        }
+        
+    except Exception as e:
+        logging.error(f"Error fetching complete dashboard: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch dashboard data")
+
+# Data Export Endpoint
+@api_router.get("/export/{data_type}")
+async def export_data(data_type: str, format: str = "csv"):
+    """Export data to CSV or JSON format"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        if data_type == "expenses":
+            cursor.execute('SELECT * FROM expenses ORDER BY date DESC')
+        elif data_type == "income":
+            cursor.execute('SELECT * FROM income ORDER BY date DESC')
+        elif data_type == "investments":
+            cursor.execute('SELECT * FROM investments ORDER BY date DESC')
+        elif data_type == "loans":
+            cursor.execute('SELECT * FROM loans ORDER BY created_at DESC')
+        else:
+            raise HTTPException(status_code=400, detail="Invalid data type")
+        
+        data = cursor.fetchall()
+        conn.close()
+        
+        if format == "json":
+            return {"data": [dict(row) for row in data]}
+        else:
+            # For CSV, we'd normally use pandas but for simplicity, return JSON
+            return {"data": [dict(row) for row in data], "format": "csv"}
+        
+    except Exception as e:
+        logging.error(f"Error exporting data: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to export data")
+
 # Include the router in the main app
 app.include_router(api_router)
 
