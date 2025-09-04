@@ -1332,18 +1332,280 @@ const Income = () => {
   );
 };
 
-const Goals = () => (
-  <div className="container mx-auto px-4 py-8">
-    <Card>
-      <CardHeader>
-        <CardTitle>Savings Goals</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p className="text-gray-600">Savings goals features coming soon...</p>
-      </CardContent>
-    </Card>
-  </div>
-);
+// Savings Goals Component
+const Goals = () => {
+  const [goals, setGoals] = useState([]);
+  const [newGoal, setNewGoal] = useState({
+    goal_name: '',
+    target_amount: '',
+    current_amount: '',
+    target_date: '',
+    description: ''
+  });
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    fetchGoals();
+  }, []);
+
+  const fetchGoals = async () => {
+    try {
+      const response = await axios.get(`${API}/savings-goals`);
+      setGoals(response.data);
+    } catch (error) {
+      console.error('Error fetching goals:', error);
+      toast.error('Failed to load savings goals');
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!newGoal.goal_name || !newGoal.target_amount) {
+      toast.error('Please fill in required fields');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await axios.post(`${API}/savings-goals`, {
+        goal_name: newGoal.goal_name,
+        target_amount: parseFloat(newGoal.target_amount),
+        current_amount: parseFloat(newGoal.current_amount) || 0,
+        target_date: newGoal.target_date || null,
+        description: newGoal.description
+      });
+      
+      toast.success('Savings goal created successfully');
+      setNewGoal({
+        goal_name: '',
+        target_amount: '',
+        current_amount: '',
+        target_date: '',
+        description: ''
+      });
+      fetchGoals();
+    } catch (error) {
+      console.error('Error creating goal:', error);
+      toast.error('Failed to create savings goal');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateProgress = async (goalId, amount) => {
+    try {
+      await axios.put(`${API}/savings-goals/${goalId}/progress?amount=${amount}`);
+      toast.success('Progress updated successfully');
+      fetchGoals();
+    } catch (error) {
+      console.error('Error updating progress:', error);
+      toast.error('Failed to update progress');
+    }
+  };
+
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  const totalTargetAmount = goals.reduce((sum, goal) => sum + goal.target_amount, 0);
+  const totalCurrentAmount = goals.reduce((sum, goal) => sum + goal.current_amount, 0);
+  const overallProgress = totalTargetAmount > 0 ? (totalCurrentAmount / totalTargetAmount) * 100 : 0;
+
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <div className="mb-8">
+        <h2 className="text-3xl font-bold text-gray-800 mb-2">Savings Goals</h2>
+        <p className="text-gray-600">Set and track your financial goals</p>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Add Goal Form */}
+        <Card className="lg:col-span-1">
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Target className="h-5 w-5 text-blue-600" />
+              <span>New Goal</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <Label htmlFor="goal_name">Goal Name *</Label>
+                <Input
+                  id="goal_name"
+                  placeholder="e.g., Emergency Fund"
+                  value={newGoal.goal_name}
+                  onChange={(e) => setNewGoal({...newGoal, goal_name: e.target.value})}
+                  required
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="target_amount">Target Amount *</Label>
+                <Input
+                  id="target_amount"
+                  type="number"
+                  placeholder="Enter target amount"
+                  value={newGoal.target_amount}
+                  onChange={(e) => setNewGoal({...newGoal, target_amount: e.target.value})}
+                  required
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="current_amount">Current Amount</Label>
+                <Input
+                  id="current_amount"
+                  type="number"
+                  placeholder="Enter current amount"
+                  value={newGoal.current_amount}
+                  onChange={(e) => setNewGoal({...newGoal, current_amount: e.target.value})}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="target_date">Target Date</Label>
+                <Input
+                  id="target_date"
+                  type="date"
+                  value={newGoal.target_date}
+                  onChange={(e) => setNewGoal({...newGoal, target_date: e.target.value})}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="description">Description</Label>
+                <Input
+                  id="description"
+                  placeholder="Enter description"
+                  value={newGoal.description}
+                  onChange={(e) => setNewGoal({...newGoal, description: e.target.value})}
+                />
+              </div>
+
+              <Button 
+                type="submit" 
+                className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                disabled={loading}
+              >
+                {loading ? 'Creating...' : 'Create Goal'}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        {/* Goals List */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Overview */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Goals Overview</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="text-center p-4 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-blue-700 font-medium">Total Target</p>
+                  <p className="text-xl font-bold text-blue-800">
+                    {formatCurrency(totalTargetAmount)}
+                  </p>
+                </div>
+                <div className="text-center p-4 bg-green-50 rounded-lg">
+                  <p className="text-sm text-green-700 font-medium">Total Saved</p>
+                  <p className="text-xl font-bold text-green-800">
+                    {formatCurrency(totalCurrentAmount)}
+                  </p>
+                </div>
+                <div className="text-center p-4 bg-purple-50 rounded-lg">
+                  <p className="text-sm text-purple-700 font-medium">Overall Progress</p>
+                  <p className="text-xl font-bold text-purple-800">
+                    {overallProgress.toFixed(1)}%
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Goals List */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Your Goals</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                {goals.length === 0 ? (
+                  <p className="text-center text-gray-500 py-8">No savings goals yet. Create your first goal!</p>
+                ) : (
+                  goals.map((goal) => (
+                    <div key={goal.id} className="p-6 bg-gray-50 rounded-lg border">
+                      <div className="flex justify-between items-start mb-4">
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-800">{goal.goal_name}</h3>
+                          {goal.description && (
+                            <p className="text-sm text-gray-600">{goal.description}</p>
+                          )}
+                          {goal.target_date && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              Target: {new Date(goal.target_date).toLocaleDateString()}
+                            </p>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm text-gray-600">
+                            {formatCurrency(goal.current_amount)} / {formatCurrency(goal.target_amount)}
+                          </p>
+                          <Badge 
+                            variant={goal.progress_percentage >= 100 ? "default" : "outline"}
+                            className={goal.progress_percentage >= 100 ? "bg-green-500" : ""}
+                          >
+                            {goal.progress_percentage.toFixed(1)}%
+                          </Badge>
+                        </div>
+                      </div>
+                      
+                      {/* Progress Bar */}
+                      <div className="w-full bg-gray-200 rounded-full h-3 mb-4">
+                        <div 
+                          className="bg-gradient-to-r from-blue-500 to-indigo-500 h-3 rounded-full transition-all duration-300"
+                          style={{ width: `${Math.min(goal.progress_percentage, 100)}%` }}
+                        ></div>
+                      </div>
+                      
+                      {/* Remaining Amount */}
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-gray-600">
+                          Remaining: {formatCurrency(goal.target_amount - goal.current_amount)}
+                        </span>
+                        <div className="flex space-x-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const amount = prompt('Enter amount to add:');
+                              if (amount && !isNaN(amount)) {
+                                updateProgress(goal.id, parseFloat(amount));
+                              }
+                            }}
+                          >
+                            Add Progress
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // Main App Component
 function App() {
