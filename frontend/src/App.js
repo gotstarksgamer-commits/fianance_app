@@ -2215,6 +2215,8 @@ function App() {
           <Route path="/loans" element={<LoanCalculator />} />
           <Route path="/expenses" element={<Expenses />} />
           <Route path="/income" element={<Income />} />
+          <Route path="/investments" element={<Investments />} />
+          <Route path="/budgets" element={<Budgets />} />
           <Route path="/goals" element={<Goals />} />
           <Route path="/ai-chat" element={<AIChat />} />
         </Routes>
