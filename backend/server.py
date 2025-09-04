@@ -487,6 +487,275 @@ async def get_categories():
     
     return {"categories": categories}
 
+# AI Integration Endpoints
+@api_router.post("/ai/analyze", response_model=AIAnalysisResponse)
+async def analyze_financial_data(request: AIAnalysisRequest):
+    """Analyze financial data using local Ollama AI"""
+    try:
+        # Get user's financial data for context
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get summary data
+        cursor.execute('SELECT SUM(amount) as total FROM expenses')
+        total_expenses = cursor.fetchone()['total'] or 0
+        
+        cursor.execute('SELECT SUM(amount) as total FROM income')
+        total_income = cursor.fetchone()['total'] or 0
+        
+        cursor.execute('''
+            SELECT category, SUM(amount) as total
+            FROM expenses
+            GROUP BY category
+            ORDER BY total DESC
+            LIMIT 5
+        ''')
+        top_categories = cursor.fetchall()
+        
+        cursor.execute('''
+            SELECT loan_type, emi_amount, total_interest
+            FROM loans
+            ORDER BY created_at DESC
+            LIMIT 3
+        ''')
+        recent_loans = cursor.fetchall()
+        
+        conn.close()
+        
+        # Prepare financial context
+        financial_context = f"""
+        Current Financial Snapshot:
+        - Total Expenses: ₹{total_expenses:,.2f}
+        - Total Income: ₹{total_income:,.2f}
+        - Net Balance: ₹{total_income - total_expenses:,.2f}
+        
+        Top Expense Categories:
+        {chr(10).join([f"- {row['category']}: ₹{row['total']:,.2f}" for row in top_categories])}
+        
+        Recent Loans:
+        {chr(10).join([f"- {row['loan_type'].title()} Loan: EMI ₹{row['emi_amount']:,.2f}, Total Interest ₹{row['total_interest']:,.2f}" for row in recent_loans])}
+        """
+        
+        # Create analysis prompt based on type
+        prompts = {
+            "general": f"""
+            You are a professional financial advisor specialized in personal finance for Indian individuals.
+            Analyze the following financial query and provide detailed insights.
+            
+            Financial Context:
+            {financial_context}
+            
+            User Query: {request.query}
+            Additional Context: {request.context or 'None provided'}
+            
+            Please provide:
+            1. Detailed analysis of the financial situation
+            2. Specific actionable recommendations (at least 3)
+            3. Risk assessment where applicable
+            4. Indian context considerations (taxes, investment options, etc.)
+            
+            Keep your response practical, accurate, and focused on Indian financial products and regulations.
+            """,
+            
+            "investment": f"""
+            You are an investment advisor with expertise in Indian financial markets.
+            
+            Financial Context:
+            {financial_context}
+            
+            Investment Query: {request.query}
+            Context: {request.context or 'None provided'}
+            
+            Provide analysis covering:
+            1. Investment viability and risk assessment
+            2. Expected returns and timeframe considerations
+            3. Diversification recommendations
+            4. Indian investment options (Mutual Funds, SIPs, FDs, PPF, ELSS, etc.)
+            5. Tax implications (Section 80C, LTCG, STCG)
+            
+            Focus on Indian investment products and current market conditions.
+            """,
+            
+            "budget": f"""
+            You are a budget planning expert for Indian households.
+            
+            Financial Context:
+            {financial_context}
+            
+            Budget Query: {request.query}
+            Context: {request.context or 'None provided'}
+            
+            Provide budget analysis including:
+            1. Income and expense optimization
+            2. Spending pattern analysis
+            3. Savings opportunities (50-30-20 rule adaptation for India)
+            4. Emergency fund recommendations (6-12 months expenses)
+            5. Debt management strategies
+            6. Indian-specific considerations (festivals, monsoon expenses, etc.)
+            """,
+            
+            "debt": f"""
+            You are a debt management specialist familiar with Indian lending practices.
+            
+            Financial Context:
+            {financial_context}
+            
+            Debt Query: {request.query}
+            Context: {request.context or 'None provided'}
+            
+            Provide debt analysis covering:
+            1. Debt consolidation opportunities
+            2. EMI optimization strategies
+            3. Prepayment vs investment analysis
+            4. Credit score improvement tips
+            5. Indian banking products for debt management
+            6. Priority order for debt repayment
+            """,
+            
+            "savings": f"""
+            You are a savings and goal planning expert for Indian families.
+            
+            Financial Context:
+            {financial_context}
+            
+            Savings Query: {request.query}
+            Context: {request.context or 'None provided'}
+            
+            Provide savings analysis including:
+            1. Goal-based savings strategies
+            2. Tax-saving instruments (Section 80C, 80D, etc.)
+            3. Emergency fund building
+            4. Retirement planning (EPF, PPF, NPS)
+            5. Children's education and marriage planning
+            6. Short-term vs long-term savings allocation
+            """
+        }
+        
+        prompt = prompts.get(request.analysis_type, prompts["general"])
+        
+        # Call Ollama for analysis
+        try:
+            response = await asyncio.to_thread(
+                ollama.chat,
+                model='llama3.1',  # Default model, can be configured
+                messages=[{
+                    'role': 'user',
+                    'content': prompt
+                }],
+                options={
+                    'temperature': 0.7,
+                    'top_p': 0.9,
+                    'max_tokens': 1000
+                }
+            )
+            
+            analysis_result = response['message']['content']
+            
+        except Exception as ollama_error:
+            # Fallback if Ollama is not available
+            logging.warning(f"Ollama not available: {str(ollama_error)}")
+            analysis_result = f"""
+            I apologize, but the AI analysis service is currently unavailable. 
+            However, based on your query about '{request.query}', here are some general recommendations:
+            
+            For your financial situation with ₹{total_expenses:,.2f} in expenses and ₹{total_income:,.2f} in income:
+            
+            1. **Budget Analysis**: Your current net balance is ₹{total_income - total_expenses:,.2f}
+            2. **Expense Management**: Consider reviewing your top spending categories
+            3. **Emergency Fund**: Aim to save 6-12 months of expenses
+            4. **Investment Planning**: Consider SIPs in mutual funds for long-term growth
+            5. **Tax Planning**: Utilize Section 80C deductions
+            
+            Please ensure Ollama is installed and running for detailed AI-powered analysis.
+            """
+        
+        # Extract recommendations from the analysis
+        recommendations = extract_recommendations_from_analysis(analysis_result)
+        
+        return AIAnalysisResponse(
+            analysis=analysis_result,
+            recommendations=recommendations,
+            confidence=0.85,
+            analysis_type=request.analysis_type
+        )
+        
+    except Exception as e:
+        logging.error(f"Error in AI analysis: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"AI analysis failed: {str(e)}")
+
+@api_router.get("/ai/models")
+async def get_available_models():
+    """Get available Ollama models"""
+    try:
+        models = await asyncio.to_thread(ollama.list)
+        return {
+            "available_models": [model['name'] for model in models['models']],
+            "total_models": len(models['models']),
+            "status": "operational"
+        }
+    except Exception as e:
+        return {
+            "error": f"Failed to retrieve model status: {str(e)}",
+            "status": "error",
+            "available_models": [],
+            "total_models": 0,
+            "message": "Please ensure Ollama is installed and running"
+        }
+
+def extract_recommendations_from_analysis(analysis_text: str) -> List[str]:
+    """Extract actionable recommendations from AI analysis"""
+    recommendations = []
+    lines = analysis_text.split('\n')
+    
+    # Look for numbered recommendations or bullet points
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+            
+        # Check for recommendations patterns
+        recommendation_keywords = [
+            'recommend', 'suggest', 'should', 'consider', 'try', 'start',
+            'focus on', 'prioritize', 'invest in', 'save', 'reduce', 'increase'
+        ]
+        
+        # Check if line contains recommendation keywords
+        if any(keyword in line.lower() for keyword in recommendation_keywords):
+            # Clean up the line
+            if line.startswith(('1.', '2.', '3.', '4.', '5.', '-', '•', '*')):
+                line = line[2:].strip()
+            elif line.startswith(('**', '__')):
+                # Extract text from markdown formatting
+                import re
+                line = re.sub(r'\*\*(.*?)\*\*', r'\1', line)
+                line = re.sub(r'__(.*?)__', r'\1', line)
+            
+            if len(line) > 20 and len(recommendations) < 5:  # Reasonable length and max 5 recommendations
+                recommendations.append(line)
+    
+    # If no recommendations found, try to extract from numbered lists
+    if not recommendations:
+        import re
+        numbered_pattern = r'^\d+\.\s*(.*)'
+        for line in lines:
+            match = re.match(numbered_pattern, line.strip())
+            if match and len(recommendations) < 5:
+                recommendation = match.group(1).strip()
+                if len(recommendation) > 20:
+                    recommendations.append(recommendation)
+    
+    # Fallback: provide generic recommendations
+    if not recommendations:
+        recommendations = [
+            "Review and optimize your monthly budget allocation",
+            "Build an emergency fund covering 6-12 months of expenses",
+            "Consider investing in diversified mutual funds through SIPs",
+            "Maximize tax-saving investments under Section 80C",
+            "Regularly monitor and adjust your financial goals"
+        ]
+    
+    return recommendations[:5]  # Return max 5 recommendations
+
 # Include the router in the main app
 app.include_router(api_router)
 
