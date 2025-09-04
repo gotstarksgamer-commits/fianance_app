@@ -174,6 +174,17 @@ class DashboardResponse(BaseModel):
     category_breakdown: dict
     recent_transactions: List[dict]
 
+class AIAnalysisRequest(BaseModel):
+    query: str
+    context: Optional[str] = None
+    analysis_type: str = "general"  # general, investment, budget, debt, savings
+
+class AIAnalysisResponse(BaseModel):
+    analysis: str
+    recommendations: List[str]
+    confidence: float = 0.85
+    analysis_type: str
+
 # Utility Functions
 def calculate_emi(principal: float, rate: float, tenure: int) -> dict:
     """Calculate EMI and related values"""
