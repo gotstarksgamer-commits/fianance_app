@@ -1083,19 +1083,254 @@ const AIChat = () => {
   );
 };
 
-// Placeholder components for other routes
-const Income = () => (
-  <div className="container mx-auto px-4 py-8">
-    <Card>
-      <CardHeader>
-        <CardTitle>Income Tracker</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p className="text-gray-600">Income tracking features coming soon...</p>
-      </CardContent>
-    </Card>
-  </div>
-);
+// Income Component
+const Income = () => {
+  const [incomeRecords, setIncomeRecords] = useState([]);
+  const [newIncome, setNewIncome] = useState({
+    amount: '',
+    source: '',
+    description: '',
+    date: new Date().toISOString().split('T')[0],
+    is_recurring: false,
+    frequency: ''
+  });
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    fetchIncome();
+  }, []);
+
+  const fetchIncome = async () => {
+    try {
+      const response = await axios.get(`${API}/income`);
+      setIncomeRecords(response.data);
+    } catch (error) {
+      console.error('Error fetching income:', error);
+      toast.error('Failed to load income records');
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!newIncome.amount || !newIncome.source) {
+      toast.error('Please fill in required fields');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await axios.post(`${API}/income`, {
+        amount: parseFloat(newIncome.amount),
+        source: newIncome.source,
+        description: newIncome.description,
+        date: newIncome.date,
+        is_recurring: newIncome.is_recurring,
+        frequency: newIncome.is_recurring ? newIncome.frequency : null
+      });
+      
+      toast.success('Income added successfully');
+      setNewIncome({
+        amount: '',
+        source: '',
+        description: '',
+        date: new Date().toISOString().split('T')[0],
+        is_recurring: false,
+        frequency: ''
+      });
+      fetchIncome();
+    } catch (error) {
+      console.error('Error adding income:', error);
+      toast.error('Failed to add income');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  const totalIncome = incomeRecords.reduce((sum, income) => sum + income.amount, 0);
+
+  const incomeSources = [
+    'Salary', 'Freelance', 'Business', 'Investments', 'Rental', 'Interest', 
+    'Dividends', 'Bonus', 'Commission', 'Other'
+  ];
+
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <div className="mb-8">
+        <h2 className="text-3xl font-bold text-gray-800 mb-2">Income Tracker</h2>
+        <p className="text-gray-600">Track and manage your income sources</p>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Add Income Form */}
+        <Card className="lg:col-span-1">
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Plus className="h-5 w-5 text-emerald-600" />
+              <span>Add Income</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <Label htmlFor="amount">Amount *</Label>
+                <Input
+                  id="amount"
+                  type="number"
+                  placeholder="Enter amount"
+                  value={newIncome.amount}
+                  onChange={(e) => setNewIncome({...newIncome, amount: e.target.value})}
+                  required
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="source">Source *</Label>
+                <Select
+                  value={newIncome.source}
+                  onValueChange={(value) => setNewIncome({...newIncome, source: value})}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select income source" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {incomeSources.map((source) => (
+                      <SelectItem key={source} value={source}>
+                        {source}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="description">Description</Label>
+                <Input
+                  id="description"
+                  placeholder="Enter description"
+                  value={newIncome.description}
+                  onChange={(e) => setNewIncome({...newIncome, description: e.target.value})}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="date">Date *</Label>
+                <Input
+                  id="date"
+                  type="date"
+                  value={newIncome.date}
+                  onChange={(e) => setNewIncome({...newIncome, date: e.target.value})}
+                  required
+                />
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="recurring"
+                  checked={newIncome.is_recurring}
+                  onChange={(e) => setNewIncome({...newIncome, is_recurring: e.target.checked})}
+                  className="rounded"
+                />
+                <Label htmlFor="recurring">Recurring Income</Label>
+              </div>
+
+              {newIncome.is_recurring && (
+                <div>
+                  <Label htmlFor="frequency">Frequency</Label>
+                  <Select
+                    value={newIncome.frequency}
+                    onValueChange={(value) => setNewIncome({...newIncome, frequency: value})}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select frequency" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="weekly">Weekly</SelectItem>
+                      <SelectItem value="monthly">Monthly</SelectItem>
+                      <SelectItem value="yearly">Yearly</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              <Button 
+                type="submit" 
+                className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700"
+                disabled={loading}
+              >
+                {loading ? 'Adding...' : 'Add Income'}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        {/* Income List */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Summary */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Income Summary</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-center">
+                <p className="text-3xl font-bold text-emerald-600">
+                  {formatCurrency(totalIncome)}
+                </p>
+                <p className="text-gray-600">Total Income</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Recent Income */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Income Records</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {incomeRecords.length === 0 ? (
+                  <p className="text-center text-gray-500 py-8">No income records yet</p>
+                ) : (
+                  incomeRecords.slice(0, 10).map((income) => (
+                    <div key={income.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2">
+                          <Badge variant="outline">{income.source}</Badge>
+                          {income.is_recurring && (
+                            <Badge variant="secondary">Recurring</Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-600 mt-1">{income.description}</p>
+                        <p className="text-xs text-gray-500">{income.date}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-semibold text-emerald-600">
+                          +{formatCurrency(income.amount)}
+                        </p>
+                        {income.frequency && (
+                          <p className="text-xs text-gray-500 capitalize">{income.frequency}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const Goals = () => (
   <div className="container mx-auto px-4 py-8">
