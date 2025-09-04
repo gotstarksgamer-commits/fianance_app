@@ -1122,6 +1122,7 @@ function App() {
           <Route path="/expenses" element={<Expenses />} />
           <Route path="/income" element={<Income />} />
           <Route path="/goals" element={<Goals />} />
+          <Route path="/ai-chat" element={<AIChat />} />
         </Routes>
       </BrowserRouter>
       <Toaster />
