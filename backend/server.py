@@ -105,8 +105,60 @@ def init_database():
             target_amount REAL NOT NULL,
             current_amount REAL DEFAULT 0,
             target_date DATE,
+            description TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users (id)
+        )
+    ''')
+    
+    # Investments table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS investments (
+            id TEXT PRIMARY KEY,
+            user_id TEXT DEFAULT 'default_user',
+            investment_type TEXT NOT NULL,
+            name TEXT NOT NULL,
+            amount REAL NOT NULL,
+            date DATE NOT NULL,
+            maturity_date DATE,
+            interest_rate REAL,
+            is_recurring BOOLEAN DEFAULT FALSE,
+            frequency TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (id)
+        )
+    ''')
+    
+    # Recurring transactions table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS recurring_transactions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT DEFAULT 'default_user',
+            transaction_type TEXT NOT NULL,
+            amount REAL NOT NULL,
+            category TEXT NOT NULL,
+            description TEXT,
+            frequency TEXT NOT NULL,
+            start_date DATE NOT NULL,
+            end_date DATE,
+            is_active BOOLEAN DEFAULT TRUE,
+            last_executed DATE,
+            next_due_date DATE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (id)
+        )
+    ''')
+    
+    # Receipts table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS receipts (
+            id TEXT PRIMARY KEY,
+            expense_id TEXT,
+            file_name TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            file_size INTEGER,
+            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (expense_id) REFERENCES expenses (id)
         )
     ''')
     
