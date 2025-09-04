@@ -142,7 +142,7 @@ const Dashboard = () => {
       </div>
 
       {/* Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-emerald-800">Total Income</CardTitle>
@@ -150,7 +150,7 @@ const Dashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-emerald-800">
-              {formatCurrency(dashboardData?.total_income || 0)}
+              {formatCurrency(completeDashboard?.total_income || 0)}
             </div>
           </CardContent>
         </Card>
@@ -162,23 +162,98 @@ const Dashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-800">
-              {formatCurrency(dashboardData?.total_expenses || 0)}
+              {formatCurrency(completeDashboard?.total_expenses || 0)}
             </div>
           </CardContent>
         </Card>
 
         <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-blue-800">Net Balance</CardTitle>
-            <Wallet className="h-4 w-4 text-blue-600" />
+            <CardTitle className="text-sm font-medium text-blue-800">Investments</CardTitle>
+            <TrendingUp className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-blue-800">
-              {formatCurrency((dashboardData?.total_income || 0) - (dashboardData?.total_expenses || 0))}
+              {formatCurrency(completeDashboard?.total_investments || 0)}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-purple-800">Net Worth</CardTitle>
+            <Wallet className="h-4 w-4 text-purple-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-purple-800">
+              {formatCurrency(completeDashboard?.net_worth || 0)}
             </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Budget Alerts */}
+      {completeDashboard?.budget_alerts && completeDashboard.budget_alerts.length > 0 && (
+        <Card className="mb-8 border-orange-200 bg-orange-50">
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2 text-orange-800">
+              <AlertTriangle className="h-5 w-5" />
+              <span>Budget Alerts</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {completeDashboard.budget_alerts.map((alert, index) => (
+                <div key={index} className="p-3 bg-white rounded-lg border border-orange-200">
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium text-orange-800">{alert.category}</span>
+                    <Badge variant="outline" className="border-orange-500 text-orange-600">
+                      {alert.percentage.toFixed(1)}%
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-orange-600 mt-1">
+                    {formatCurrency(alert.spent)} / {formatCurrency(alert.limit)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Savings Goals Progress */}
+      {completeDashboard?.savings_goals && completeDashboard.savings_goals.count > 0 && (
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Target className="h-5 w-5 text-blue-600" />
+              <span>Savings Goals Progress</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="text-center p-4 bg-blue-50 rounded-lg">
+                <p className="text-sm text-blue-700 font-medium">Goals</p>
+                <p className="text-xl font-bold text-blue-800">
+                  {completeDashboard.savings_goals.count}
+                </p>
+              </div>
+              <div className="text-center p-4 bg-green-50 rounded-lg">
+                <p className="text-sm text-green-700 font-medium">Saved</p>
+                <p className="text-xl font-bold text-green-800">
+                  {formatCurrency(completeDashboard.savings_goals.saved)}
+                </p>
+              </div>
+              <div className="text-center p-4 bg-purple-50 rounded-lg">
+                <p className="text-sm text-purple-700 font-medium">Progress</p>
+                <p className="text-xl font-bold text-purple-800">
+                  {completeDashboard.savings_goals.progress.toFixed(1)}%
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Category Breakdown */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
