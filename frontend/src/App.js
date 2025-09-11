@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
+import React, { useContext, useState, useEffect } from 'react';
+import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import './App.css';
 
@@ -9,22 +9,25 @@ import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
 import { Input } from './components/ui/input';
 import { Label } from './components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
 import { Badge } from './components/ui/badge';
-import { Separator } from './components/ui/separator';
 import { toast } from 'sonner';
 import { Toaster } from './components/ui/sonner';
 import { Slider } from './components/ui/slider';
+import { AuthProvider } from './context/AuthContext';
+import  AuthContext  from './context/AuthContext';
+import PrivateRoute from './components/ui/PrivateRoute';
+import Login from './pages/Login'; 
+import Register from './pages/Register';
 
 // Icons
-import { 
-  Calculator, 
-  PieChart, 
-  TrendingUp, 
-  Home, 
-  Car, 
-  CreditCard, 
-  Receipt, 
+import {
+  Calculator,
+  PieChart,
+  TrendingUp,
+  Home,
+  Car,
+  CreditCard,
+  Receipt,
   Plus,
   DollarSign,
   Target,
@@ -39,13 +42,14 @@ import {
   BarChart3
 } from 'lucide-react';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+const API = `http://localhost:8001/api`;
 
 // Navigation Component
 const Navigation = () => {
   const location = useLocation();
-  
+  const navigate = useNavigate();
+  const { logout } = useContext(AuthContext);
+
   const navItems = [
     { path: '/', label: 'Dashboard', icon: PieChart },
     { path: '/loans', label: 'Loan Calculator', icon: Calculator },
@@ -56,7 +60,12 @@ const Navigation = () => {
     { path: '/goals', label: 'Goals', icon: Target },
     { path: '/ai-chat', label: 'AI Assistant', icon: Brain }
   ];
-  
+
+  const handleLogout = async () => {
+    await logout();   
+    navigate("/login");
+  };
+
   return (
     <nav className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg">
       <div className="container mx-auto px-4">
@@ -73,17 +82,24 @@ const Navigation = () => {
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all duration-200 ${
-                    isActive 
-                      ? 'bg-white/20 text-white shadow-lg' 
+                  className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all duration-200 ${isActive
+                      ? 'bg-white/20 text-white shadow-lg'
                       : 'hover:bg-white/10 text-white/80 hover:text-white'
-                  }`}
+                    }`}
                 >
                   <Icon size={18} />
                   <span className="hidden md:inline">{item.label}</span>
                 </Link>
               );
             })}
+            {/* 🚀 Logout Button */}
+            <button
+              onClick={handleLogout}
+              className="flex items-center space-x-2 px-4 py-2 rounded-lg hover:bg-red-600/80 bg-red-500 text-white transition-all duration-200"
+            >
+              <Brain size={18} />
+              <span className="hidden md:inline">Logout</span>
+            </button>
           </div>
         </div>
       </div>
@@ -93,6 +109,7 @@ const Navigation = () => {
 
 // Dashboard Component
 const Dashboard = () => {
+  const { getAuthHeader } = useContext(AuthContext); // Access getAuthHeader
   const [dashboardData, setDashboardData] = useState(null);
   const [completeDashboard, setCompleteDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -104,8 +121,8 @@ const Dashboard = () => {
   const fetchDashboardData = async () => {
     try {
       const [basicResponse, completeResponse] = await Promise.all([
-        axios.get(`${API}/dashboard`),
-        axios.get(`${API}/dashboard/complete`)
+        axios.get(`${API}/dashboard`, { headers: getAuthHeader() }),
+        axios.get(`${API}/dashboard/complete`, { headers: getAuthHeader() })
       ]);
       setDashboardData(basicResponse.data);
       setCompleteDashboard(completeResponse.data);
@@ -331,6 +348,7 @@ const LoanCalculator = () => {
   const [tenure, setTenure] = useState([240]); // Default 20 years in months
   const [calculation, setCalculation] = useState(null);
   const [loading, setLoading] = useState(false);
+  const { getAuthHeader } = useContext(AuthContext); // Access getAuthHeader
 
   // Loan type configurations
   const loanConfigs = {
@@ -346,7 +364,7 @@ const LoanCalculator = () => {
       color: 'emerald'
     },
     car: {
-      title: 'Car Loan Calculator', 
+      title: 'Car Loan Calculator',
       icon: Car,
       minAmount: 50000,
       maxAmount: 5000000,
@@ -383,7 +401,7 @@ const LoanCalculator = () => {
         principal_amount: principal[0],
         interest_rate: interestRate[0],
         tenure_months: tenure[0]
-      });
+      }, { headers: getAuthHeader() });
       setCalculation(response.data);
     } catch (error) {
       console.error('Error calculating loan:', error);
@@ -433,11 +451,10 @@ const LoanCalculator = () => {
           return (
             <Card
               key={type}
-              className={`cursor-pointer transition-all duration-200 ${
-                loanType === type 
+              className={`cursor-pointer transition-all duration-200 ${loanType === type
                   ? `ring-2 ring-offset-2 ring-${config.color}-500 bg-gradient-to-br from-${config.color}-50 to-${config.color}-100`
                   : 'hover:shadow-lg hover:scale-105'
-              }`}
+                }`}
               onClick={() => setLoanType(type)}
             >
               <CardContent className="flex items-center justify-center p-6">
@@ -528,7 +545,7 @@ const LoanCalculator = () => {
                     onChange={(e) => setTenure([parseInt(e.target.value) || 0])}
                     className="w-20 text-right"
                   />
-                  <Select 
+                  <Select
                     value="months"
                     onValueChange={(value) => {
                       if (value === 'years') {
@@ -613,18 +630,18 @@ const LoanCalculator = () => {
                   <h4 className="font-semibold text-gray-700">Payment Breakdown</h4>
                   <div className="relative">
                     <div className="flex h-8 rounded-lg overflow-hidden">
-                      <div 
+                      <div
                         className="bg-emerald-500 flex items-center justify-center text-white text-xs font-medium"
-                        style={{ 
-                          width: `${(calculation.principal_amount / calculation.total_amount) * 100}%` 
+                        style={{
+                          width: `${(calculation.principal_amount / calculation.total_amount) * 100}%`
                         }}
                       >
                         Principal
                       </div>
-                      <div 
+                      <div
                         className="bg-red-500 flex items-center justify-center text-white text-xs font-medium"
-                        style={{ 
-                          width: `${(calculation.total_interest / calculation.total_amount) * 100}%` 
+                        style={{
+                          width: `${(calculation.total_interest / calculation.total_amount) * 100}%`
                         }}
                       >
                         Interest
@@ -644,7 +661,7 @@ const LoanCalculator = () => {
                 </div>
 
                 {/* Apply Button */}
-                <Button 
+                <Button
                   className={`w-full bg-gradient-to-r ${getColorClasses(currentConfig.color)} text-white py-3 text-lg font-semibold hover:opacity-90 transition-all duration-200`}
                 >
                   Apply Now
@@ -664,6 +681,7 @@ const LoanCalculator = () => {
 
 // Expenses Component
 const Expenses = () => {
+  const { getAuthHeader } = useContext(AuthContext); // Access getAuthHeader
   const [expenses, setExpenses] = useState([]);
   const [categories, setCategories] = useState({});
   const [newExpense, setNewExpense] = useState({
@@ -682,7 +700,7 @@ const Expenses = () => {
 
   const fetchExpenses = async () => {
     try {
-      const response = await axios.get(`${API}/expenses`);
+      const response = await axios.get(`${API}/expenses`, { headers: getAuthHeader() });
       setExpenses(response.data);
     } catch (error) {
       console.error('Error fetching expenses:', error);
@@ -692,7 +710,7 @@ const Expenses = () => {
 
   const fetchCategories = async () => {
     try {
-      const response = await axios.get(`${API}/categories`);
+      const response = await axios.get(`${API}/categories`, { headers: getAuthHeader() });
       setCategories(response.data.categories);
     } catch (error) {
       console.error('Error fetching categories:', error);
@@ -714,8 +732,8 @@ const Expenses = () => {
         subcategory: newExpense.subcategory,
         description: newExpense.description,
         date: newExpense.date
-      });
-      
+      }, { headers: getAuthHeader() });
+
       toast.success('Expense added successfully');
       setNewExpense({
         amount: '',
@@ -769,7 +787,7 @@ const Expenses = () => {
                   type="number"
                   placeholder="Enter amount"
                   value={newExpense.amount}
-                  onChange={(e) => setNewExpense({...newExpense, amount: e.target.value})}
+                  onChange={(e) => setNewExpense({ ...newExpense, amount: e.target.value })}
                   required
                 />
               </div>
@@ -778,7 +796,7 @@ const Expenses = () => {
                 <Label htmlFor="category">Category *</Label>
                 <Select
                   value={newExpense.category}
-                  onValueChange={(value) => setNewExpense({...newExpense, category: value, subcategory: ''})}
+                  onValueChange={(value) => setNewExpense({ ...newExpense, category: value, subcategory: '' })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select category" />
@@ -798,7 +816,7 @@ const Expenses = () => {
                   <Label htmlFor="subcategory">Subcategory</Label>
                   <Select
                     value={newExpense.subcategory}
-                    onValueChange={(value) => setNewExpense({...newExpense, subcategory: value})}
+                    onValueChange={(value) => setNewExpense({ ...newExpense, subcategory: value })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select subcategory" />
@@ -820,7 +838,7 @@ const Expenses = () => {
                   id="description"
                   placeholder="Enter description"
                   value={newExpense.description}
-                  onChange={(e) => setNewExpense({...newExpense, description: e.target.value})}
+                  onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
                 />
               </div>
 
@@ -830,13 +848,13 @@ const Expenses = () => {
                   id="date"
                   type="date"
                   value={newExpense.date}
-                  onChange={(e) => setNewExpense({...newExpense, date: e.target.value})}
+                  onChange={(e) => setNewExpense({ ...newExpense, date: e.target.value })}
                   required
                 />
               </div>
 
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700"
                 disabled={loading}
               >
@@ -909,6 +927,7 @@ const AIChat = () => {
   const [analysisType, setAnalysisType] = useState('general');
   const [isLoading, setIsLoading] = useState(false);
   const [modelStatus, setModelStatus] = useState(null);
+  const { getAuthHeader } = useContext(AuthContext); // Access getAuthHeader
 
   useEffect(() => {
     checkModelStatus();
@@ -923,7 +942,7 @@ const AIChat = () => {
 
   const checkModelStatus = async () => {
     try {
-      const response = await axios.get(`${API}/ai/models`);
+      const response = await axios.get(`${API}/ai/models`, { headers: getAuthHeader() });
       setModelStatus(response.data);
     } catch (error) {
       console.error('Error checking model status:', error);
@@ -950,7 +969,7 @@ const AIChat = () => {
         query: inputMessage,
         analysis_type: analysisType,
         context: 'User is asking for financial advice through the AI chat interface'
-      });
+      }, { headers: getAuthHeader() });
 
       const aiMessage = {
         id: (Date.now() + 1).toString(),
@@ -997,7 +1016,7 @@ const AIChat = () => {
       <div className="mb-8">
         <h2 className="text-3xl font-bold text-gray-800 mb-2">AI Financial Assistant</h2>
         <p className="text-gray-600">Get personalized financial advice powered by local AI</p>
-        
+
         {/* Model Status */}
         <div className="mt-4">
           {modelStatus?.status === 'operational' ? (
@@ -1038,19 +1057,18 @@ const AIChat = () => {
                 </Select>
               </div>
             </CardHeader>
-            
+
             <CardContent className="flex-1 flex flex-col">
               {/* Messages Area */}
               <div className="flex-1 overflow-y-auto space-y-4 mb-4 p-2 bg-gray-50 rounded-lg">
                 {messages.map((message) => (
                   <div key={message.id} className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[80%] p-3 rounded-lg ${
-                      message.type === 'user' 
-                        ? 'bg-emerald-500 text-white' 
+                    <div className={`max-w-[80%] p-3 rounded-lg ${message.type === 'user'
+                        ? 'bg-emerald-500 text-white'
                         : 'bg-white border border-gray-200 text-gray-800'
-                    }`}>
+                      }`}>
                       <div className="whitespace-pre-wrap text-sm">{message.content}</div>
-                      
+
                       {/* Recommendations */}
                       {message.recommendations && message.recommendations.length > 0 && (
                         <div className="mt-3 pt-3 border-t border-gray-200">
@@ -1068,14 +1086,14 @@ const AIChat = () => {
                           </ul>
                         </div>
                       )}
-                      
+
                       <div className="text-xs opacity-70 mt-2">
                         {new Date(message.timestamp).toLocaleTimeString()}
                       </div>
                     </div>
                   </div>
                 ))}
-                
+
                 {isLoading && (
                   <div className="flex justify-start">
                     <div className="bg-white border border-gray-200 p-3 rounded-lg">
@@ -1087,7 +1105,7 @@ const AIChat = () => {
                   </div>
                 )}
               </div>
-              
+
               {/* Input Area */}
               <div className="flex space-x-2">
                 <Input
@@ -1098,8 +1116,8 @@ const AIChat = () => {
                   disabled={isLoading}
                   className="flex-1"
                 />
-                <Button 
-                  onClick={sendMessage} 
+                <Button
+                  onClick={sendMessage}
                   disabled={isLoading || !inputMessage.trim()}
                   className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700"
                 >
@@ -1193,6 +1211,7 @@ const AIChat = () => {
 
 // Income Component
 const Income = () => {
+  const { getAuthHeader } = useContext(AuthContext); // Access getAuthHeader
   const [incomeRecords, setIncomeRecords] = useState([]);
   const [newIncome, setNewIncome] = useState({
     amount: '',
@@ -1210,7 +1229,7 @@ const Income = () => {
 
   const fetchIncome = async () => {
     try {
-      const response = await axios.get(`${API}/income`);
+      const response = await axios.get(`${API}/income`, { headers: getAuthHeader() });
       setIncomeRecords(response.data);
     } catch (error) {
       console.error('Error fetching income:', error);
@@ -1234,8 +1253,8 @@ const Income = () => {
         date: newIncome.date,
         is_recurring: newIncome.is_recurring,
         frequency: newIncome.is_recurring ? newIncome.frequency : null
-      });
-      
+      }, { headers: getAuthHeader() });
+
       toast.success('Income added successfully');
       setNewIncome({
         amount: '',
@@ -1266,7 +1285,7 @@ const Income = () => {
   const totalIncome = incomeRecords.reduce((sum, income) => sum + income.amount, 0);
 
   const incomeSources = [
-    'Salary', 'Freelance', 'Business', 'Investments', 'Rental', 'Interest', 
+    'Salary', 'Freelance', 'Business', 'Investments', 'Rental', 'Interest',
     'Dividends', 'Bonus', 'Commission', 'Other'
   ];
 
@@ -1295,7 +1314,7 @@ const Income = () => {
                   type="number"
                   placeholder="Enter amount"
                   value={newIncome.amount}
-                  onChange={(e) => setNewIncome({...newIncome, amount: e.target.value})}
+                  onChange={(e) => setNewIncome({ ...newIncome, amount: e.target.value })}
                   required
                 />
               </div>
@@ -1304,7 +1323,7 @@ const Income = () => {
                 <Label htmlFor="source">Source *</Label>
                 <Select
                   value={newIncome.source}
-                  onValueChange={(value) => setNewIncome({...newIncome, source: value})}
+                  onValueChange={(value) => setNewIncome({ ...newIncome, source: value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select income source" />
@@ -1325,7 +1344,7 @@ const Income = () => {
                   id="description"
                   placeholder="Enter description"
                   value={newIncome.description}
-                  onChange={(e) => setNewIncome({...newIncome, description: e.target.value})}
+                  onChange={(e) => setNewIncome({ ...newIncome, description: e.target.value })}
                 />
               </div>
 
@@ -1335,7 +1354,7 @@ const Income = () => {
                   id="date"
                   type="date"
                   value={newIncome.date}
-                  onChange={(e) => setNewIncome({...newIncome, date: e.target.value})}
+                  onChange={(e) => setNewIncome({ ...newIncome, date: e.target.value })}
                   required
                 />
               </div>
@@ -1345,7 +1364,7 @@ const Income = () => {
                   type="checkbox"
                   id="recurring"
                   checked={newIncome.is_recurring}
-                  onChange={(e) => setNewIncome({...newIncome, is_recurring: e.target.checked})}
+                  onChange={(e) => setNewIncome({ ...newIncome, is_recurring: e.target.checked })}
                   className="rounded"
                 />
                 <Label htmlFor="recurring">Recurring Income</Label>
@@ -1356,7 +1375,7 @@ const Income = () => {
                   <Label htmlFor="frequency">Frequency</Label>
                   <Select
                     value={newIncome.frequency}
-                    onValueChange={(value) => setNewIncome({...newIncome, frequency: value})}
+                    onValueChange={(value) => setNewIncome({ ...newIncome, frequency: value })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select frequency" />
@@ -1370,8 +1389,8 @@ const Income = () => {
                 </div>
               )}
 
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700"
                 disabled={loading}
               >
@@ -1442,6 +1461,7 @@ const Income = () => {
 
 // Savings Goals Component
 const Goals = () => {
+  const { getAuthHeader } = useContext(AuthContext); // Access getAuthHeader
   const [goals, setGoals] = useState([]);
   const [newGoal, setNewGoal] = useState({
     goal_name: '',
@@ -1458,7 +1478,7 @@ const Goals = () => {
 
   const fetchGoals = async () => {
     try {
-      const response = await axios.get(`${API}/savings-goals`);
+      const response = await axios.get(`${API}/savings-goals`, { headers: getAuthHeader() });
       setGoals(response.data);
     } catch (error) {
       console.error('Error fetching goals:', error);
@@ -1481,8 +1501,8 @@ const Goals = () => {
         current_amount: parseFloat(newGoal.current_amount) || 0,
         target_date: newGoal.target_date || null,
         description: newGoal.description
-      });
-      
+      }, { headers: getAuthHeader() });
+
       toast.success('Savings goal created successfully');
       setNewGoal({
         goal_name: '',
@@ -1502,7 +1522,7 @@ const Goals = () => {
 
   const updateProgress = async (goalId, amount) => {
     try {
-      await axios.put(`${API}/savings-goals/${goalId}/progress?amount=${amount}`);
+      await axios.put(`${API}/savings-goals/${goalId}/progress?amount=${amount}`, { headers: getAuthHeader() });
       toast.success('Progress updated successfully');
       fetchGoals();
     } catch (error) {
@@ -1548,7 +1568,7 @@ const Goals = () => {
                   id="goal_name"
                   placeholder="e.g., Emergency Fund"
                   value={newGoal.goal_name}
-                  onChange={(e) => setNewGoal({...newGoal, goal_name: e.target.value})}
+                  onChange={(e) => setNewGoal({ ...newGoal, goal_name: e.target.value })}
                   required
                 />
               </div>
@@ -1560,7 +1580,7 @@ const Goals = () => {
                   type="number"
                   placeholder="Enter target amount"
                   value={newGoal.target_amount}
-                  onChange={(e) => setNewGoal({...newGoal, target_amount: e.target.value})}
+                  onChange={(e) => setNewGoal({ ...newGoal, target_amount: e.target.value })}
                   required
                 />
               </div>
@@ -1572,7 +1592,7 @@ const Goals = () => {
                   type="number"
                   placeholder="Enter current amount"
                   value={newGoal.current_amount}
-                  onChange={(e) => setNewGoal({...newGoal, current_amount: e.target.value})}
+                  onChange={(e) => setNewGoal({ ...newGoal, current_amount: e.target.value })}
                 />
               </div>
 
@@ -1582,7 +1602,7 @@ const Goals = () => {
                   id="target_date"
                   type="date"
                   value={newGoal.target_date}
-                  onChange={(e) => setNewGoal({...newGoal, target_date: e.target.value})}
+                  onChange={(e) => setNewGoal({ ...newGoal, target_date: e.target.value })}
                 />
               </div>
 
@@ -1592,12 +1612,12 @@ const Goals = () => {
                   id="description"
                   placeholder="Enter description"
                   value={newGoal.description}
-                  onChange={(e) => setNewGoal({...newGoal, description: e.target.value})}
+                  onChange={(e) => setNewGoal({ ...newGoal, description: e.target.value })}
                 />
               </div>
 
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
                 disabled={loading}
               >
@@ -1666,7 +1686,7 @@ const Goals = () => {
                           <p className="text-sm text-gray-600">
                             {formatCurrency(goal.current_amount)} / {formatCurrency(goal.target_amount)}
                           </p>
-                          <Badge 
+                          <Badge
                             variant={goal.progress_percentage >= 100 ? "default" : "outline"}
                             className={goal.progress_percentage >= 100 ? "bg-green-500" : ""}
                           >
@@ -1674,15 +1694,15 @@ const Goals = () => {
                           </Badge>
                         </div>
                       </div>
-                      
+
                       {/* Progress Bar */}
                       <div className="w-full bg-gray-200 rounded-full h-3 mb-4">
-                        <div 
+                        <div
                           className="bg-gradient-to-r from-blue-500 to-indigo-500 h-3 rounded-full transition-all duration-300"
                           style={{ width: `${Math.min(goal.progress_percentage, 100)}%` }}
                         ></div>
                       </div>
-                      
+
                       {/* Remaining Amount */}
                       <div className="flex justify-between items-center text-sm">
                         <span className="text-gray-600">
@@ -1717,6 +1737,7 @@ const Goals = () => {
 
 // Investments Component
 const Investments = () => {
+  const { getAuthHeader } = useContext(AuthContext); // Access getAuthHeader
   const [investments, setInvestments] = useState([]);
   const [newInvestment, setNewInvestment] = useState({
     investment_type: '',
@@ -1736,7 +1757,7 @@ const Investments = () => {
 
   const fetchInvestments = async () => {
     try {
-      const response = await axios.get(`${API}/investments`);
+      const response = await axios.get(`${API}/investments`, { headers: getAuthHeader() });
       setInvestments(response.data);
     } catch (error) {
       console.error('Error fetching investments:', error);
@@ -1762,8 +1783,8 @@ const Investments = () => {
         interest_rate: newInvestment.interest_rate ? parseFloat(newInvestment.interest_rate) : null,
         is_recurring: newInvestment.is_recurring,
         frequency: newInvestment.is_recurring ? newInvestment.frequency : null
-      });
-      
+      }, { headers: getAuthHeader() });
+
       toast.success('Investment added successfully');
       setNewInvestment({
         investment_type: '',
@@ -1826,7 +1847,7 @@ const Investments = () => {
                 <Label htmlFor="investment_type">Type *</Label>
                 <Select
                   value={newInvestment.investment_type}
-                  onValueChange={(value) => setNewInvestment({...newInvestment, investment_type: value})}
+                  onValueChange={(value) => setNewInvestment({ ...newInvestment, investment_type: value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select investment type" />
@@ -1847,7 +1868,7 @@ const Investments = () => {
                   id="name"
                   placeholder="e.g., HDFC Top 100 Fund"
                   value={newInvestment.name}
-                  onChange={(e) => setNewInvestment({...newInvestment, name: e.target.value})}
+                  onChange={(e) => setNewInvestment({ ...newInvestment, name: e.target.value })}
                   required
                 />
               </div>
@@ -1859,7 +1880,7 @@ const Investments = () => {
                   type="number"
                   placeholder="Enter amount"
                   value={newInvestment.amount}
-                  onChange={(e) => setNewInvestment({...newInvestment, amount: e.target.value})}
+                  onChange={(e) => setNewInvestment({ ...newInvestment, amount: e.target.value })}
                   required
                 />
               </div>
@@ -1870,7 +1891,7 @@ const Investments = () => {
                   id="date"
                   type="date"
                   value={newInvestment.date}
-                  onChange={(e) => setNewInvestment({...newInvestment, date: e.target.value})}
+                  onChange={(e) => setNewInvestment({ ...newInvestment, date: e.target.value })}
                   required
                 />
               </div>
@@ -1881,7 +1902,7 @@ const Investments = () => {
                   id="maturity_date"
                   type="date"
                   value={newInvestment.maturity_date}
-                  onChange={(e) => setNewInvestment({...newInvestment, maturity_date: e.target.value})}
+                  onChange={(e) => setNewInvestment({ ...newInvestment, maturity_date: e.target.value })}
                 />
               </div>
 
@@ -1893,7 +1914,7 @@ const Investments = () => {
                   step="0.1"
                   placeholder="e.g., 12.5"
                   value={newInvestment.interest_rate}
-                  onChange={(e) => setNewInvestment({...newInvestment, interest_rate: e.target.value})}
+                  onChange={(e) => setNewInvestment({ ...newInvestment, interest_rate: e.target.value })}
                 />
               </div>
 
@@ -1902,7 +1923,7 @@ const Investments = () => {
                   type="checkbox"
                   id="recurring"
                   checked={newInvestment.is_recurring}
-                  onChange={(e) => setNewInvestment({...newInvestment, is_recurring: e.target.checked})}
+                  onChange={(e) => setNewInvestment({ ...newInvestment, is_recurring: e.target.checked })}
                   className="rounded"
                 />
                 <Label htmlFor="recurring">Recurring Investment</Label>
@@ -1913,7 +1934,7 @@ const Investments = () => {
                   <Label htmlFor="frequency">Frequency</Label>
                   <Select
                     value={newInvestment.frequency}
-                    onValueChange={(value) => setNewInvestment({...newInvestment, frequency: value})}
+                    onValueChange={(value) => setNewInvestment({ ...newInvestment, frequency: value })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select frequency" />
@@ -1927,8 +1948,8 @@ const Investments = () => {
                 </div>
               )}
 
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
                 disabled={loading}
               >
@@ -2024,6 +2045,7 @@ const Investments = () => {
 
 // Budget Management Component
 const Budgets = () => {
+  const { getAuthHeader } = useContext(AuthContext); // Access getAuthHeader
   const [budgets, setBudgets] = useState([]);
   const [newBudget, setNewBudget] = useState({
     category: '',
@@ -2040,7 +2062,7 @@ const Budgets = () => {
 
   const fetchBudgets = async () => {
     try {
-      const response = await axios.get(`${API}/budgets`);
+      const response = await axios.get(`${API}/budgets`, { headers: getAuthHeader() });
       setBudgets(response.data);
     } catch (error) {
       console.error('Error fetching budgets:', error);
@@ -2050,7 +2072,7 @@ const Budgets = () => {
 
   const fetchCategories = async () => {
     try {
-      const response = await axios.get(`${API}/categories`);
+      const response = await axios.get(`${API}/categories`, { headers: getAuthHeader() });
       setCategories(response.data.categories);
     } catch (error) {
       console.error('Error fetching categories:', error);
@@ -2070,8 +2092,8 @@ const Budgets = () => {
         category: newBudget.category,
         monthly_limit: parseFloat(newBudget.monthly_limit),
         alert_threshold: newBudget.alert_threshold
-      });
-      
+      }, { headers: getAuthHeader() });
+
       toast.success('Budget created successfully');
       setNewBudget({
         category: '',
@@ -2122,7 +2144,7 @@ const Budgets = () => {
                 <Label htmlFor="category">Category *</Label>
                 <Select
                   value={newBudget.category}
-                  onValueChange={(value) => setNewBudget({...newBudget, category: value})}
+                  onValueChange={(value) => setNewBudget({ ...newBudget, category: value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select category" />
@@ -2144,7 +2166,7 @@ const Budgets = () => {
                   type="number"
                   placeholder="Enter monthly limit"
                   value={newBudget.monthly_limit}
-                  onChange={(e) => setNewBudget({...newBudget, monthly_limit: e.target.value})}
+                  onChange={(e) => setNewBudget({ ...newBudget, monthly_limit: e.target.value })}
                   required
                 />
               </div>
@@ -2157,15 +2179,15 @@ const Budgets = () => {
                   min="1"
                   max="100"
                   value={newBudget.alert_threshold}
-                  onChange={(e) => setNewBudget({...newBudget, alert_threshold: parseInt(e.target.value)})}
+                  onChange={(e) => setNewBudget({ ...newBudget, alert_threshold: parseInt(e.target.value) })}
                 />
                 <p className="text-xs text-gray-500 mt-1">
                   Get alerts when spending reaches this percentage
                 </p>
               </div>
 
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700"
                 disabled={loading}
               >
@@ -2275,21 +2297,20 @@ const Budgets = () => {
                           </p>
                         </div>
                       </div>
-                      
+
                       {/* Progress Bar */}
                       <div className="w-full bg-gray-200 rounded-full h-3">
-                        <div 
-                          className={`h-3 rounded-full transition-all duration-300 ${
-                            budget.is_over_budget 
-                              ? 'bg-red-500' 
+                        <div
+                          className={`h-3 rounded-full transition-all duration-300 ${budget.is_over_budget
+                              ? 'bg-red-500'
                               : budget.percentage_used >= budget.alert_threshold
-                              ? 'bg-orange-500'
-                              : 'bg-green-500'
-                          }`}
+                                ? 'bg-orange-500'
+                                : 'bg-green-500'
+                            }`}
                           style={{ width: `${Math.min(budget.percentage_used, 100)}%` }}
                         ></div>
                       </div>
-                      
+
                       <div className="flex justify-between text-sm text-gray-600 mt-2">
                         <span>Remaining: {formatCurrency(budget.remaining)}</span>
                         <span>Alert at: {budget.alert_threshold}%</span>
@@ -2308,22 +2329,34 @@ const Budgets = () => {
 
 // Main App Component
 function App() {
+  const { user, loading } = useContext(AuthContext);
+
+  if (loading) {
+    return <div>Loading...</div>; 
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
-      <BrowserRouter>
-        <Navigation />
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/loans" element={<LoanCalculator />} />
-          <Route path="/expenses" element={<Expenses />} />
-          <Route path="/income" element={<Income />} />
-          <Route path="/investments" element={<Investments />} />
-          <Route path="/budgets" element={<Budgets />} />
-          <Route path="/goals" element={<Goals />} />
-          <Route path="/ai-chat" element={<AIChat />} />
-        </Routes>
-      </BrowserRouter>
-      <Toaster />
+          {/* Only show navbar if user is logged in */}
+          {user && <Navigation />}
+
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route element={<PrivateRoute />}>
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/loans" element={<LoanCalculator />} />
+              <Route path="/expenses" element={<Expenses />} />
+              <Route path="/income" element={<Income />} />
+              <Route path="/investments" element={<Investments />} />
+              <Route path="/budgets" element={<Budgets />} />
+              <Route path="/goals" element={<Goals />} />
+              <Route path="/ai-chat" element={<AIChat />} />
+            </Route>
+
+          </Routes>
+        <Toaster />
     </div>
   );
 }

@@ -1,32 +1,22 @@
-from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, Depends, status
+from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 import os
 import logging
 import sqlite3
 from pathlib import Path
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field
 from typing import List, Optional
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 import json
 import math
 import ollama
 import asyncio
-import bcrypt
-import jwt
-from functools import wraps
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
-
-# Configuration
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-this-in-production")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
-REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 # SQLite database setup
 DATABASE_PATH = ROOT_DIR / 'finance_tracker.db'
@@ -36,38 +26,21 @@ def init_database():
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     
-    # Users table (updated for authentication)
+    # Users table (for future multi-user support)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            is_active BOOLEAN DEFAULT TRUE,
-            is_verified BOOLEAN DEFAULT FALSE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            email TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
     
-    # Refresh tokens table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS refresh_tokens (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            token_hash TEXT NOT NULL,
-            expires_at TIMESTAMP NOT NULL,
-            is_revoked BOOLEAN DEFAULT FALSE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-        )
-    ''')
-    
-    # Loans table (remove default user_id)
+    # Loans table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS loans (
             id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
+            user_id TEXT DEFAULT 'default_user',
             loan_type TEXT NOT NULL,
             principal_amount REAL NOT NULL,
             interest_rate REAL NOT NULL,
@@ -76,15 +49,15 @@ def init_database():
             total_interest REAL NOT NULL,
             total_amount REAL NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+            FOREIGN KEY (user_id) REFERENCES users (id)
         )
     ''')
     
-    # Expenses table (remove default user_id)
+    # Expenses table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS expenses (
             id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
+            user_id TEXT DEFAULT 'default_user',
             amount REAL NOT NULL,
             category TEXT NOT NULL,
             subcategory TEXT,
@@ -92,60 +65,57 @@ def init_database():
             date DATE NOT NULL,
             receipt_path TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+            FOREIGN KEY (user_id) REFERENCES users (id)
         )
     ''')
     
-    # Income table (remove default user_id)
+    # Income table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS income (
             id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
+            user_id TEXT DEFAULT 'default_user',
             amount REAL NOT NULL,
             source TEXT NOT NULL,
             description TEXT,
             date DATE NOT NULL,
             is_recurring BOOLEAN DEFAULT FALSE,
-            frequency TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+            FOREIGN KEY (user_id) REFERENCES users (id)
         )
     ''')
     
-    # Budgets table (remove default user_id)
+    # Budgets table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS budgets (
             id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
+            user_id TEXT DEFAULT 'default_user',
             category TEXT NOT NULL,
             monthly_limit REAL NOT NULL,
-            alert_threshold REAL DEFAULT 80.0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-            UNIQUE(user_id, category)
+            FOREIGN KEY (user_id) REFERENCES users (id)
         )
     ''')
     
-    # Savings goals table (remove default user_id)
+    # Savings goals table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS savings_goals (
             id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
+            user_id TEXT DEFAULT 'default_user',
             goal_name TEXT NOT NULL,
             target_amount REAL NOT NULL,
             current_amount REAL DEFAULT 0,
             target_date DATE,
             description TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+            FOREIGN KEY (user_id) REFERENCES users (id)
         )
     ''')
     
-    # Investments table (remove default user_id)
+    # Investments table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS investments (
             id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
+            user_id TEXT DEFAULT 'default_user',
             investment_type TEXT NOT NULL,
             name TEXT NOT NULL,
             amount REAL NOT NULL,
@@ -155,15 +125,15 @@ def init_database():
             is_recurring BOOLEAN DEFAULT FALSE,
             frequency TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+            FOREIGN KEY (user_id) REFERENCES users (id)
         )
     ''')
     
-    # Recurring transactions table (remove default user_id)
+    # Recurring transactions table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS recurring_transactions (
             id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
+            user_id TEXT DEFAULT 'default_user',
             transaction_type TEXT NOT NULL,
             amount REAL NOT NULL,
             category TEXT NOT NULL,
@@ -175,7 +145,7 @@ def init_database():
             last_executed DATE,
             next_due_date DATE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+            FOREIGN KEY (user_id) REFERENCES users (id)
         )
     ''')
     
@@ -188,8 +158,14 @@ def init_database():
             file_path TEXT NOT NULL,
             file_size INTEGER,
             uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (expense_id) REFERENCES expenses (id) ON DELETE CASCADE
+            FOREIGN KEY (expense_id) REFERENCES expenses (id)
         )
+    ''')
+    
+    # Create default user if not exists
+    cursor.execute('''
+        INSERT OR IGNORE INTO users (id, name, email) 
+        VALUES ('default_user', 'Default User', 'user@example.com')
     ''')
     
     conn.commit()
@@ -198,156 +174,21 @@ def init_database():
 # Initialize database on startup
 init_database()
 
-# Security setup
-security = HTTPBearer()
-
-# Password utilities
-class PasswordUtils:
-    @staticmethod
-    def hash_password(password: str) -> str:
-        """Hash password using bcrypt"""
-        salt = bcrypt.gensalt()
-        hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
-        return hashed.decode('utf-8')
-    
-    @staticmethod
-    def verify_password(password: str, hashed: str) -> bool:
-        """Verify password against hash"""
-        return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
-
-# JWT utilities
-class JWTUtils:
-    @staticmethod
-    def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
-        """Create access token"""
-        to_encode = data.copy()
-        if expires_delta:
-            expire = datetime.utcnow() + expires_delta
-        else:
-            expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        
-        to_encode.update({"exp": expire, "type": "access"})
-        encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-        return encoded_jwt
-    
-    @staticmethod
-    def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None):
-        """Create refresh token"""
-        to_encode = data.copy()
-        if expires_delta:
-            expire = datetime.utcnow() + expires_delta
-        else:
-            expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-        
-        to_encode.update({"exp": expire, "type": "refresh"})
-        encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-        return encoded_jwt
-    
-    @staticmethod
-    def decode_token(token: str):
-        """Decode and validate token"""
-        try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-            return payload
-        except jwt.ExpiredSignatureError:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token has expired"
-            )
-        except jwt.JWTError:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token"
-            )
-
-# User authentication dependency
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Get current authenticated user"""
-    token = credentials.credentials
-    payload = JWTUtils.decode_token(token)
-    
-    if payload.get("type") != "access":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token type"
-        )
-    
-    user_id: str = payload.get("sub")
-    if user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials"
-        )
-    
-    # Verify user exists and is active
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users WHERE id = ? AND is_active = 1", (user_id,))
-    user = cursor.fetchone()
-    conn.close()
-    
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found or inactive"
-        )
-    
-    return {
-        "id": user["id"],
-        "name": user["name"],
-        "email": user["email"],
-        "is_active": user["is_active"],
-        "is_verified": user["is_verified"]
-    }
-
-# Create the main app
+# Create the main app without a prefix
 app = FastAPI(
     title="Personal Finance Tracker",
-    description="Privacy-first personal finance management with local AI and user management",
-    version="2.0.0"
+    description="Privacy-first personal finance management with local AI",
+    version="1.0.0"
 )
 
-# Create routers
-auth_router = APIRouter(prefix="/api/auth", tags=["Authentication"])
-api_router = APIRouter(prefix="/api", tags=["Finance API"])
+# Create a router with the /api prefix
+api_router = APIRouter(prefix="/api")
 
-# Pydantic Models for Authentication
-class UserRegister(BaseModel):
-    name: str = Field(..., min_length=2, max_length=100)
-    email: EmailStr
-    password: str = Field(..., min_length=8, max_length=128)
-
-class UserLogin(BaseModel):
-    email: EmailStr
-    password: str
-
-class UserResponse(BaseModel):
-    id: str
-    name: str
-    email: str
-    is_active: bool
-    is_verified: bool
-    created_at: str
-
-class TokenResponse(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
-    expires_in: int
-    user: UserResponse
-
-class RefreshTokenRequest(BaseModel):
-    refresh_token: str
-
-class PasswordChangeRequest(BaseModel):
-    current_password: str
-    new_password: str = Field(..., min_length=8, max_length=128)
-
-# Updated Pydantic Models (existing models remain the same)
+# Pydantic Models
 class LoanCalculationRequest(BaseModel):
-    loan_type: str
+    loan_type: str  # "home", "car", "personal"
     principal_amount: float
-    interest_rate: float
+    interest_rate: float  # Annual percentage rate
     tenure_months: int
 
 class LoanCalculationResponse(BaseModel):
@@ -366,7 +207,7 @@ class ExpenseCreate(BaseModel):
     category: str
     subcategory: Optional[str] = None
     description: Optional[str] = None
-    date: str
+    date: str  # Format: YYYY-MM-DD
 
 class ExpenseResponse(BaseModel):
     id: str
@@ -388,7 +229,7 @@ class DashboardResponse(BaseModel):
 class AIAnalysisRequest(BaseModel):
     query: str
     context: Optional[str] = None
-    analysis_type: str = "general"
+    analysis_type: str = "general"  # general, investment, budget, debt, savings
 
 class AIAnalysisResponse(BaseModel):
     analysis: str
@@ -400,9 +241,9 @@ class IncomeCreate(BaseModel):
     amount: float
     source: str
     description: Optional[str] = None
-    date: str
+    date: str  # Format: YYYY-MM-DD
     is_recurring: bool = False
-    frequency: Optional[str] = None
+    frequency: Optional[str] = None  # monthly, weekly, yearly
 
 class IncomeResponse(BaseModel):
     id: str
@@ -432,7 +273,7 @@ class SavingsGoalResponse(BaseModel):
     created_at: str
 
 class InvestmentCreate(BaseModel):
-    investment_type: str
+    investment_type: str  # SIP, FD, Mutual Fund, Stock, Gold, etc.
     name: str
     amount: float
     date: str
@@ -456,7 +297,7 @@ class InvestmentResponse(BaseModel):
 class BudgetCreate(BaseModel):
     category: str
     monthly_limit: float
-    alert_threshold: float = 80.0
+    alert_threshold: float = 80.0  # Alert when 80% of budget is used
 
 class BudgetResponse(BaseModel):
     id: str
@@ -469,21 +310,39 @@ class BudgetResponse(BaseModel):
     is_over_budget: bool
     created_at: str
 
-# Database helper functions
-def get_db_connection():
-    """Get SQLite database connection"""
-    conn = sqlite3.connect(DATABASE_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+class RecurringTransactionCreate(BaseModel):
+    transaction_type: str  # expense, income, investment
+    amount: float
+    category: str
+    description: str
+    frequency: str  # monthly, weekly, yearly
+    start_date: str
+    end_date: Optional[str] = None
+    is_active: bool = True
 
-# Utility Functions (keep existing ones)
+class RecurringTransactionResponse(BaseModel):
+    id: str
+    transaction_type: str
+    amount: float
+    category: str
+    description: str
+    frequency: str
+    start_date: str
+    end_date: Optional[str] = None
+    is_active: bool
+    next_due_date: str
+    created_at: str
+
+# Utility Functions
 def calculate_emi(principal: float, rate: float, tenure: int) -> dict:
     """Calculate EMI and related values"""
+    # Convert annual rate to monthly rate
     monthly_rate = rate / (12 * 100)
     
     if monthly_rate == 0:
         emi = principal / tenure
     else:
+        # EMI calculation formula
         emi = principal * monthly_rate * (1 + monthly_rate)**tenure / ((1 + monthly_rate)**tenure - 1)
     
     total_amount = emi * tenure
@@ -506,6 +365,7 @@ def generate_amortization_schedule(principal: float, rate: float, tenure: int, e
         principal_payment = emi - interest_payment
         remaining_principal -= principal_payment
         
+        # Ensure remaining principal doesn't go negative due to rounding
         if remaining_principal < 0:
             principal_payment += remaining_principal
             remaining_principal = 0
@@ -523,343 +383,20 @@ def generate_amortization_schedule(principal: float, rate: float, tenure: int, e
     
     return schedule
 
-# Authentication Routes
-@auth_router.post("/register", response_model=TokenResponse)
-async def register_user(user_data: UserRegister):
-    """Register a new user"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Check if user already exists
-        cursor.execute("SELECT id FROM users WHERE email = ?", (user_data.email,))
-        if cursor.fetchone():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email already registered"
-            )
-        
-        # Create new user
-        user_id = str(uuid.uuid4())
-        password_hash = PasswordUtils.hash_password(user_data.password)
-        
-        cursor.execute('''
-            INSERT INTO users (id, name, email, password_hash)
-            VALUES (?, ?, ?, ?)
-        ''', (user_id, user_data.name, user_data.email, password_hash))
-        
-        conn.commit()
-        
-        # Get created user
-        cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
-        user = cursor.fetchone()
-        conn.close()
-        
-        # Create tokens
-        access_token = JWTUtils.create_access_token(data={"sub": user_id})
-        refresh_token = JWTUtils.create_refresh_token(data={"sub": user_id})
-        
-        # Store refresh token
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        token_id = str(uuid.uuid4())
-        token_hash = PasswordUtils.hash_password(refresh_token)
-        expires_at = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-        
-        cursor.execute('''
-            INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at)
-            VALUES (?, ?, ?, ?)
-        ''', (token_id, user_id, token_hash, expires_at))
-        
-        conn.commit()
-        conn.close()
-        
-        user_response = UserResponse(
-            id=user["id"],
-            name=user["name"],
-            email=user["email"],
-            is_active=user["is_active"],
-            is_verified=user["is_verified"],
-            created_at=user["created_at"]
-        )
-        
-        return TokenResponse(
-            access_token=access_token,
-            refresh_token=refresh_token,
-            expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-            user=user_response
-        )
-        
-    except Exception as e:
-        logging.error(f"Error registering user: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Registration failed"
-        )
+# Database helper functions
+def get_db_connection():
+    """Get SQLite database connection"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    conn.row_factory = sqlite3.Row  # This allows us to access columns by name
+    return conn
 
-@auth_router.post("/login", response_model=TokenResponse)
-async def login_user(user_credentials: UserLogin):
-    """Login user"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Get user by email
-        cursor.execute("SELECT * FROM users WHERE email = ?", (user_credentials.email,))
-        user = cursor.fetchone()
-        
-        if not user or not PasswordUtils.verify_password(user_credentials.password, user["password_hash"]):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email or password"
-            )
-        
-        if not user["is_active"]:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Account is deactivated"
-            )
-        
-        # Create tokens
-        access_token = JWTUtils.create_access_token(data={"sub": user["id"]})
-        refresh_token = JWTUtils.create_refresh_token(data={"sub": user["id"]})
-        
-        # Store refresh token
-        token_id = str(uuid.uuid4())
-        token_hash = PasswordUtils.hash_password(refresh_token)
-        expires_at = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-        
-        cursor.execute('''
-            INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at)
-            VALUES (?, ?, ?, ?)
-        ''', (token_id, user["id"], token_hash, expires_at))
-        
-        conn.commit()
-        conn.close()
-        
-        user_response = UserResponse(
-            id=user["id"],
-            name=user["name"],
-            email=user["email"],
-            is_active=user["is_active"],
-            is_verified=user["is_verified"],
-            created_at=user["created_at"]
-        )
-        
-        return TokenResponse(
-            access_token=access_token,
-            refresh_token=refresh_token,
-            expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-            user=user_response
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Error logging in user: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Login failed"
-        )
-
-@auth_router.post("/refresh", response_model=TokenResponse)
-async def refresh_token(token_request: RefreshTokenRequest):
-    """Refresh access token"""
-    try:
-        # Decode refresh token
-        payload = JWTUtils.decode_token(token_request.refresh_token)
-        
-        if payload.get("type") != "refresh":
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token type"
-            )
-        
-        user_id = payload.get("sub")
-        if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token"
-            )
-        
-        # Verify refresh token in database
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT * FROM refresh_tokens 
-            WHERE user_id = ? AND is_revoked = 0 AND expires_at > datetime('now')
-        ''', (user_id,))
-        
-        stored_tokens = cursor.fetchall()
-        token_valid = False
-        
-        for stored_token in stored_tokens:
-            if PasswordUtils.verify_password(token_request.refresh_token, stored_token["token_hash"]):
-                token_valid = True
-                break
-        
-        if not token_valid:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired refresh token"
-            )
-        
-        # Get user
-        cursor.execute("SELECT * FROM users WHERE id = ? AND is_active = 1", (user_id,))
-        user = cursor.fetchone()
-        
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User not found or inactive"
-            )
-        
-        # Create new tokens
-        new_access_token = JWTUtils.create_access_token(data={"sub": user_id})
-        new_refresh_token = JWTUtils.create_refresh_token(data={"sub": user_id})
-        
-        # Store new refresh token and revoke old one
-        cursor.execute('''
-            UPDATE refresh_tokens 
-            SET is_revoked = 1 
-            WHERE user_id = ? AND is_revoked = 0
-        ''', (user_id,))
-        
-        token_id = str(uuid.uuid4())
-        token_hash = PasswordUtils.hash_password(new_refresh_token)
-        expires_at = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-        
-        cursor.execute('''
-            INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at)
-            VALUES (?, ?, ?, ?)
-        ''', (token_id, user_id, token_hash, expires_at))
-        
-        conn.commit()
-        conn.close()
-        
-        user_response = UserResponse(
-            id=user["id"],
-            name=user["name"],
-            email=user["email"],
-            is_active=user["is_active"],
-            is_verified=user["is_verified"],
-            created_at=user["created_at"]
-        )
-        
-        return TokenResponse(
-            access_token=new_access_token,
-            refresh_token=new_refresh_token,
-            expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-            user=user_response
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Error refreshing token: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Token refresh failed"
-        )
-
-@auth_router.post("/logout")
-async def logout_user(current_user: dict = Depends(get_current_user)):
-    """Logout user by revoking refresh tokens"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            UPDATE refresh_tokens 
-            SET is_revoked = 1 
-            WHERE user_id = ? AND is_revoked = 0
-        ''', (current_user["id"],))
-        
-        conn.commit()
-        conn.close()
-        
-        return {"message": "Successfully logged out"}
-        
-    except Exception as e:
-        logging.error(f"Error logging out user: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Logout failed"
-        )
-
-@auth_router.get("/me", response_model=UserResponse)
-async def get_current_user_info(current_user: dict = Depends(get_current_user)):
-    """Get current user information"""
-    return UserResponse(
-        id=current_user["id"],
-        name=current_user["name"],
-        email=current_user["email"],
-        is_active=current_user["is_active"],
-        is_verified=current_user["is_verified"],
-        created_at=""  # You might want to fetch this from the database
-    )
-
-@auth_router.put("/change-password")
-async def change_password(
-    password_data: PasswordChangeRequest,
-    current_user: dict = Depends(get_current_user)
-):
-    """Change user password"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Get current user with password hash
-        cursor.execute("SELECT password_hash FROM users WHERE id = ?", (current_user["id"],))
-        user = cursor.fetchone()
-        
-        # Verify current password
-        if not PasswordUtils.verify_password(password_data.current_password, user["password_hash"]):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Current password is incorrect"
-            )
-        
-        # Update password
-        new_password_hash = PasswordUtils.hash_password(password_data.new_password)
-        cursor.execute('''
-            UPDATE users 
-            SET password_hash = ?, updated_at = CURRENT_TIMESTAMP 
-            WHERE id = ?
-        ''', (new_password_hash, current_user["id"]))
-        
-        # Revoke all refresh tokens to force re-login
-        cursor.execute('''
-            UPDATE refresh_tokens 
-            SET is_revoked = 1 
-            WHERE user_id = ?
-        ''', (current_user["id"],))
-        
-        conn.commit()
-        conn.close()
-        
-        return {"message": "Password changed successfully. Please login again."}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Error changing password: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Password change failed"
-        )
-
-# Protected API Routes (Updated with user authentication)
+# API Routes
 @api_router.get("/")
 async def root():
-    return {"message": "Personal Finance Tracker API", "version": "2.0.0"}
+    return {"message": "Personal Finance Tracker API", "version": "1.0.0"}
 
 @api_router.post("/loans/calculate", response_model=LoanCalculationResponse)
-async def calculate_loan(
-    request: LoanCalculationRequest,
-    current_user: dict = Depends(get_current_user)
-):
+async def calculate_loan(request: LoanCalculationRequest):
     """Calculate loan EMI and save to database"""
     try:
         # Calculate EMI
@@ -877,18 +414,18 @@ async def calculate_loan(
             calculation["emi_amount"]
         )
         
-        # Save to database with user_id
+        # Save to database
         loan_id = str(uuid.uuid4())
         conn = get_db_connection()
         cursor = conn.cursor()
         
         cursor.execute('''
-            INSERT INTO loans (id, user_id, loan_type, principal_amount, interest_rate, 
+            INSERT INTO loans (id, loan_type, principal_amount, interest_rate, 
                              tenure_months, emi_amount, total_interest, total_amount)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
-            loan_id, current_user["id"], request.loan_type, request.principal_amount, 
-            request.interest_rate, request.tenure_months, calculation["emi_amount"], 
+            loan_id, request.loan_type, request.principal_amount, request.interest_rate,
+            request.tenure_months, calculation["emi_amount"], 
             calculation["total_interest"], calculation["total_amount"]
         ))
         
@@ -912,13 +449,13 @@ async def calculate_loan(
         raise HTTPException(status_code=500, detail=f"Loan calculation failed: {str(e)}")
 
 @api_router.get("/loans", response_model=List[LoanCalculationResponse])
-async def get_loans(current_user: dict = Depends(get_current_user)):
-    """Get all user's saved loans"""
+async def get_loans():
+    """Get all saved loans"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute('SELECT * FROM loans WHERE user_id = ? ORDER BY created_at DESC', (current_user["id"],))
+        cursor.execute('SELECT * FROM loans ORDER BY created_at DESC')
         loans = cursor.fetchall()
         conn.close()
         
@@ -942,10 +479,7 @@ async def get_loans(current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail="Failed to fetch loans")
 
 @api_router.post("/expenses", response_model=ExpenseResponse)
-async def create_expense(
-    expense: ExpenseCreate,
-    current_user: dict = Depends(get_current_user)
-):
+async def create_expense(expense: ExpenseCreate):
     """Create a new expense record"""
     try:
         expense_id = str(uuid.uuid4())
@@ -953,10 +487,10 @@ async def create_expense(
         cursor = conn.cursor()
         
         cursor.execute('''
-            INSERT INTO expenses (id, user_id, amount, category, subcategory, description, date)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO expenses (id, amount, category, subcategory, description, date)
+            VALUES (?, ?, ?, ?, ?, ?)
         ''', (
-            expense_id, current_user["id"], expense.amount, expense.category, 
+            expense_id, expense.amount, expense.category, 
             expense.subcategory, expense.description, expense.date
         ))
         
@@ -978,13 +512,13 @@ async def create_expense(
         raise HTTPException(status_code=500, detail="Failed to create expense")
 
 @api_router.get("/expenses", response_model=List[ExpenseResponse])
-async def get_expenses(current_user: dict = Depends(get_current_user)):
-    """Get all user's expenses"""
+async def get_expenses():
+    """Get all expenses"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute('SELECT * FROM expenses WHERE user_id = ? ORDER BY date DESC, created_at DESC', (current_user["id"],))
+        cursor.execute('SELECT * FROM expenses ORDER BY date DESC, created_at DESC')
         expenses = cursor.fetchall()
         conn.close()
         
@@ -1008,53 +542,50 @@ async def get_expenses(current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail="Failed to fetch expenses")
 
 @api_router.get("/dashboard", response_model=DashboardResponse)
-async def get_dashboard(current_user: dict = Depends(get_current_user)):
-    """Get dashboard data with user's financial overview"""
+async def get_dashboard():
+    """Get dashboard data with financial overview"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        user_id = current_user["id"]
         
-        # Get total expenses for user
-        cursor.execute('SELECT SUM(amount) as total FROM expenses WHERE user_id = ?', (user_id,))
+        # Get total expenses
+        cursor.execute('SELECT SUM(amount) as total FROM expenses')
         total_expenses_result = cursor.fetchone()
         total_expenses = total_expenses_result['total'] or 0
         
-        # Get total income for user
-        cursor.execute('SELECT SUM(amount) as total FROM income WHERE user_id = ?', (user_id,))
+        # Get total income
+        cursor.execute('SELECT SUM(amount) as total FROM income')
         total_income_result = cursor.fetchone()
         total_income = total_income_result['total'] or 0
         
-        # Get monthly expenses for user (current year)
+        # Get monthly expenses (current year)
         cursor.execute('''
             SELECT strftime('%Y-%m', date) as month, SUM(amount) as total
             FROM expenses 
-            WHERE user_id = ? AND date >= date('now', 'start of year')
+            WHERE date >= date('now', 'start of year')
             GROUP BY strftime('%Y-%m', date)
             ORDER BY month
-        ''', (user_id,))
+        ''')
         monthly_data = cursor.fetchall()
         monthly_expenses = {row['month']: row['total'] for row in monthly_data}
         
-        # Get category breakdown for user
+        # Get category breakdown
         cursor.execute('''
             SELECT category, SUM(amount) as total
             FROM expenses
-            WHERE user_id = ?
             GROUP BY category
             ORDER BY total DESC
-        ''', (user_id,))
+        ''')
         category_data = cursor.fetchall()
         category_breakdown = {row['category']: row['total'] for row in category_data}
         
-        # Get recent transactions for user
+        # Get recent transactions
         cursor.execute('''
             SELECT category, amount, description, date
             FROM expenses
-            WHERE user_id = ?
             ORDER BY created_at DESC
             LIMIT 10
-        ''', (user_id,))
+        ''')
         recent_data = cursor.fetchall()
         recent_transactions = []
         for row in recent_data:
@@ -1104,50 +635,44 @@ async def get_categories():
     
     return {"categories": categories}
 
-# AI Integration Endpoints (Updated with user context)
+# AI Integration Endpoints
 @api_router.post("/ai/analyze", response_model=AIAnalysisResponse)
-async def analyze_financial_data(
-    request: AIAnalysisRequest,
-    current_user: dict = Depends(get_current_user)
-):
-    """Analyze user's financial data using local Ollama AI"""
+async def analyze_financial_data(request: AIAnalysisRequest):
+    """Analyze financial data using local Ollama AI"""
     try:
         # Get user's financial data for context
         conn = get_db_connection()
         cursor = conn.cursor()
-        user_id = current_user["id"]
         
-        # Get summary data for user
-        cursor.execute('SELECT SUM(amount) as total FROM expenses WHERE user_id = ?', (user_id,))
+        # Get summary data
+        cursor.execute('SELECT SUM(amount) as total FROM expenses')
         total_expenses = cursor.fetchone()['total'] or 0
         
-        cursor.execute('SELECT SUM(amount) as total FROM income WHERE user_id = ?', (user_id,))
+        cursor.execute('SELECT SUM(amount) as total FROM income')
         total_income = cursor.fetchone()['total'] or 0
         
         cursor.execute('''
             SELECT category, SUM(amount) as total
             FROM expenses
-            WHERE user_id = ?
             GROUP BY category
             ORDER BY total DESC
             LIMIT 5
-        ''', (user_id,))
+        ''')
         top_categories = cursor.fetchall()
         
         cursor.execute('''
             SELECT loan_type, emi_amount, total_interest
             FROM loans
-            WHERE user_id = ?
             ORDER BY created_at DESC
             LIMIT 3
-        ''', (user_id,))
+        ''')
         recent_loans = cursor.fetchall()
         
         conn.close()
         
         # Prepare financial context
         financial_context = f"""
-        Current Financial Snapshot for {current_user["name"]}:
+        Current Financial Snapshot:
         - Total Expenses: ₹{total_expenses:,.2f}
         - Total Income: ₹{total_income:,.2f}
         - Net Balance: ₹{total_income - total_expenses:,.2f}
@@ -1159,7 +684,7 @@ async def analyze_financial_data(
         {chr(10).join([f"- {row['loan_type'].title()} Loan: EMI ₹{row['emi_amount']:,.2f}, Total Interest ₹{row['total_interest']:,.2f}" for row in recent_loans])}
         """
         
-        # Create analysis prompt based on type (keeping existing prompts)
+        # Create analysis prompt based on type
         prompts = {
             "general": f"""
             You are a professional financial advisor specialized in personal finance for Indian individuals.
@@ -1260,7 +785,7 @@ async def analyze_financial_data(
         try:
             response = await asyncio.to_thread(
                 ollama.chat,
-                model='llama3.1',
+                model='llama3.1',  # Default model, can be configured
                 messages=[{
                     'role': 'user',
                     'content': prompt
@@ -1278,7 +803,7 @@ async def analyze_financial_data(
             # Fallback if Ollama is not available
             logging.warning(f"Ollama not available: {str(ollama_error)}")
             analysis_result = f"""
-            Hello {current_user["name"]}, I apologize, but the AI analysis service is currently unavailable. 
+            I apologize, but the AI analysis service is currently unavailable. 
             However, based on your query about '{request.query}', here are some general recommendations:
             
             For your financial situation with ₹{total_expenses:,.2f} in expenses and ₹{total_income:,.2f} in income:
@@ -1353,7 +878,7 @@ def extract_recommendations_from_analysis(analysis_text: str) -> List[str]:
                 line = re.sub(r'\*\*(.*?)\*\*', r'\1', line)
                 line = re.sub(r'__(.*?)__', r'\1', line)
             
-            if len(line) > 20 and len(recommendations) < 5:
+            if len(line) > 20 and len(recommendations) < 5:  # Reasonable length and max 5 recommendations
                 recommendations.append(line)
     
     # If no recommendations found, try to extract from numbered lists
@@ -1377,14 +902,11 @@ def extract_recommendations_from_analysis(analysis_text: str) -> List[str]:
             "Regularly monitor and adjust your financial goals"
         ]
     
-    return recommendations[:5]
+    return recommendations[:5]  # Return max 5 recommendations
 
-# Income Management Endpoints (Updated)
+# Income Management Endpoints
 @api_router.post("/income", response_model=IncomeResponse)
-async def create_income(
-    income: IncomeCreate,
-    current_user: dict = Depends(get_current_user)
-):
+async def create_income(income: IncomeCreate):
     """Create a new income record"""
     try:
         income_id = str(uuid.uuid4())
@@ -1392,10 +914,10 @@ async def create_income(
         cursor = conn.cursor()
         
         cursor.execute('''
-            INSERT INTO income (id, user_id, amount, source, description, date, is_recurring, frequency)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO income (id, amount, source, description, date, is_recurring, frequency)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         ''', (
-            income_id, current_user["id"], income.amount, income.source, income.description,
+            income_id, income.amount, income.source, income.description,
             income.date, income.is_recurring, income.frequency
         ))
         
@@ -1418,13 +940,13 @@ async def create_income(
         raise HTTPException(status_code=500, detail="Failed to create income")
 
 @api_router.get("/income", response_model=List[IncomeResponse])
-async def get_income(current_user: dict = Depends(get_current_user)):
-    """Get all user's income records"""
+async def get_income():
+    """Get all income records"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute('SELECT * FROM income WHERE user_id = ? ORDER BY date DESC, created_at DESC', (current_user["id"],))
+        cursor.execute('SELECT * FROM income ORDER BY date DESC, created_at DESC')
         income_records = cursor.fetchall()
         conn.close()
         
@@ -1447,12 +969,9 @@ async def get_income(current_user: dict = Depends(get_current_user)):
         logging.error(f"Error fetching income: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to fetch income")
 
-# Savings Goals Endpoints (Updated)
+# Savings Goals Endpoints
 @api_router.post("/savings-goals", response_model=SavingsGoalResponse)
-async def create_savings_goal(
-    goal: SavingsGoalCreate,
-    current_user: dict = Depends(get_current_user)
-):
+async def create_savings_goal(goal: SavingsGoalCreate):
     """Create a new savings goal"""
     try:
         goal_id = str(uuid.uuid4())
@@ -1460,10 +979,10 @@ async def create_savings_goal(
         cursor = conn.cursor()
         
         cursor.execute('''
-            INSERT INTO savings_goals (id, user_id, goal_name, target_amount, current_amount, target_date, description)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO savings_goals (id, goal_name, target_amount, current_amount, target_date, description)
+            VALUES (?, ?, ?, ?, ?, ?)
         ''', (
-            goal_id, current_user["id"], goal.goal_name, goal.target_amount, goal.current_amount,
+            goal_id, goal.goal_name, goal.target_amount, goal.current_amount,
             goal.target_date, goal.description
         ))
         
@@ -1488,13 +1007,13 @@ async def create_savings_goal(
         raise HTTPException(status_code=500, detail="Failed to create savings goal")
 
 @api_router.get("/savings-goals", response_model=List[SavingsGoalResponse])
-async def get_savings_goals(current_user: dict = Depends(get_current_user)):
-    """Get all user's savings goals"""
+async def get_savings_goals():
+    """Get all savings goals"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute('SELECT * FROM savings_goals WHERE user_id = ? ORDER BY created_at DESC', (current_user["id"],))
+        cursor.execute('SELECT * FROM savings_goals ORDER BY created_at DESC')
         goals = cursor.fetchall()
         conn.close()
         
@@ -1519,12 +1038,8 @@ async def get_savings_goals(current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail="Failed to fetch savings goals")
 
 @api_router.put("/savings-goals/{goal_id}/progress")
-async def update_savings_goal_progress(
-    goal_id: str, 
-    amount: float,
-    current_user: dict = Depends(get_current_user)
-):
-    """Update progress on a user's savings goal"""
+async def update_savings_goal_progress(goal_id: str, amount: float):
+    """Update progress on a savings goal"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -1532,8 +1047,8 @@ async def update_savings_goal_progress(
         cursor.execute('''
             UPDATE savings_goals 
             SET current_amount = current_amount + ?
-            WHERE id = ? AND user_id = ?
-        ''', (amount, goal_id, current_user["id"]))
+            WHERE id = ?
+        ''', (amount, goal_id))
         
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="Savings goal not found")
@@ -1547,12 +1062,9 @@ async def update_savings_goal_progress(
         logging.error(f"Error updating savings goal: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to update savings goal")
 
-# Investment Management Endpoints (Updated)
+# Investment Management Endpoints
 @api_router.post("/investments", response_model=InvestmentResponse)
-async def create_investment(
-    investment: InvestmentCreate,
-    current_user: dict = Depends(get_current_user)
-):
+async def create_investment(investment: InvestmentCreate):
     """Create a new investment record"""
     try:
         investment_id = str(uuid.uuid4())
@@ -1560,11 +1072,11 @@ async def create_investment(
         cursor = conn.cursor()
         
         cursor.execute('''
-            INSERT INTO investments (id, user_id, investment_type, name, amount, date, 
+            INSERT INTO investments (id, investment_type, name, amount, date, 
                                    maturity_date, interest_rate, is_recurring, frequency)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
-            investment_id, current_user["id"], investment.investment_type, investment.name, 
+            investment_id, investment.investment_type, investment.name, 
             investment.amount, investment.date, investment.maturity_date,
             investment.interest_rate, investment.is_recurring, investment.frequency
         ))
@@ -1590,13 +1102,13 @@ async def create_investment(
         raise HTTPException(status_code=500, detail="Failed to create investment")
 
 @api_router.get("/investments", response_model=List[InvestmentResponse])
-async def get_investments(current_user: dict = Depends(get_current_user)):
-    """Get all user's investment records"""
+async def get_investments():
+    """Get all investment records"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute('SELECT * FROM investments WHERE user_id = ? ORDER BY date DESC, created_at DESC', (current_user["id"],))
+        cursor.execute('SELECT * FROM investments ORDER BY date DESC, created_at DESC')
         investments = cursor.fetchall()
         conn.close()
         
@@ -1621,21 +1133,17 @@ async def get_investments(current_user: dict = Depends(get_current_user)):
         logging.error(f"Error fetching investments: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to fetch investments")
 
-# Budget Management Endpoints (Updated)
+# Budget Management Endpoints
 @api_router.post("/budgets", response_model=BudgetResponse)
-async def create_budget(
-    budget: BudgetCreate,
-    current_user: dict = Depends(get_current_user)
-):
+async def create_budget(budget: BudgetCreate):
     """Create or update a budget for a category"""
     try:
         budget_id = str(uuid.uuid4())
         conn = get_db_connection()
         cursor = conn.cursor()
-        user_id = current_user["id"]
         
-        # Check if budget already exists for this category and user
-        cursor.execute('SELECT id FROM budgets WHERE category = ? AND user_id = ?', (budget.category, user_id))
+        # Check if budget already exists for this category
+        cursor.execute('SELECT id FROM budgets WHERE category = ?', (budget.category,))
         existing = cursor.fetchone()
         
         if existing:
@@ -1643,24 +1151,24 @@ async def create_budget(
             cursor.execute('''
                 UPDATE budgets 
                 SET monthly_limit = ?, alert_threshold = ?
-                WHERE category = ? AND user_id = ?
-            ''', (budget.monthly_limit, budget.alert_threshold, budget.category, user_id))
+                WHERE category = ?
+            ''', (budget.monthly_limit, budget.alert_threshold, budget.category))
             budget_id = existing['id']
         else:
             # Create new budget
             cursor.execute('''
-                INSERT INTO budgets (id, user_id, category, monthly_limit, alert_threshold)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (budget_id, user_id, budget.category, budget.monthly_limit, budget.alert_threshold))
+                INSERT INTO budgets (id, category, monthly_limit, alert_threshold)
+                VALUES (?, ?, ?, ?)
+            ''', (budget_id, budget.category, budget.monthly_limit, budget.alert_threshold))
         
         conn.commit()
         
-        # Get current month's spending for this category and user
+        # Get current month's spending for this category
         cursor.execute('''
             SELECT SUM(amount) as spent
             FROM expenses 
-            WHERE category = ? AND user_id = ? AND strftime('%Y-%m', date) = strftime('%Y-%m', 'now')
-        ''', (budget.category, user_id))
+            WHERE category = ? AND strftime('%Y-%m', date) = strftime('%Y-%m', 'now')
+        ''', (budget.category,))
         
         spent_result = cursor.fetchone()
         current_spent = spent_result['spent'] or 0
@@ -1688,24 +1196,23 @@ async def create_budget(
         raise HTTPException(status_code=500, detail="Failed to create budget")
 
 @api_router.get("/budgets", response_model=List[BudgetResponse])
-async def get_budgets(current_user: dict = Depends(get_current_user)):
-    """Get all user's budgets with current spending"""
+async def get_budgets():
+    """Get all budgets with current spending"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        user_id = current_user["id"]
         
-        cursor.execute('SELECT * FROM budgets WHERE user_id = ? ORDER BY category', (user_id,))
+        cursor.execute('SELECT * FROM budgets ORDER BY category')
         budgets = cursor.fetchall()
         
         result = []
         for budget in budgets:
-            # Get current month's spending for this category and user
+            # Get current month's spending for this category
             cursor.execute('''
                 SELECT SUM(amount) as spent
                 FROM expenses 
-                WHERE category = ? AND user_id = ? AND strftime('%Y-%m', date) = strftime('%Y-%m', 'now')
-            ''', (budget['category'], user_id))
+                WHERE category = ? AND strftime('%Y-%m', date) = strftime('%Y-%m', 'now')
+            ''', (budget['category'],))
             
             spent_result = cursor.fetchone()
             current_spent = spent_result['spent'] or 0
@@ -1733,25 +1240,11 @@ async def get_budgets(current_user: dict = Depends(get_current_user)):
         logging.error(f"Error fetching budgets: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to fetch budgets")
 
-# File Upload Endpoint (Updated)
+# File Upload Endpoint
 @api_router.post("/upload-receipt/{expense_id}")
-async def upload_receipt(
-    expense_id: str, 
-    file: UploadFile = File(...),
-    current_user: dict = Depends(get_current_user)
-):
-    """Upload receipt for a user's expense"""
+async def upload_receipt(expense_id: str, file: UploadFile = File(...)):
+    """Upload receipt for an expense"""
     try:
-        # Verify expense belongs to user
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('SELECT id FROM expenses WHERE id = ? AND user_id = ?', (expense_id, current_user["id"]))
-        expense = cursor.fetchone()
-        
-        if not expense:
-            raise HTTPException(status_code=404, detail="Expense not found")
-        
         # Create uploads directory if it doesn't exist
         upload_dir = ROOT_DIR / "uploads" / "receipts"
         upload_dir.mkdir(parents=True, exist_ok=True)
@@ -1767,11 +1260,14 @@ async def upload_receipt(
             buffer.write(content)
         
         # Update expense record
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
         cursor.execute('''
             UPDATE expenses 
             SET receipt_path = ?
-            WHERE id = ? AND user_id = ?
-        ''', (str(file_path), expense_id, current_user["id"]))
+            WHERE id = ?
+        ''', (str(file_path), expense_id))
         
         # Save receipt record
         receipt_id = str(uuid.uuid4())
@@ -1789,49 +1285,41 @@ async def upload_receipt(
             "filename": unique_filename
         }
         
-    except HTTPException:
-        raise
     except Exception as e:
         logging.error(f"Error uploading receipt: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to upload receipt")
 
-# Enhanced Dashboard with all user data
+# Enhanced Dashboard with all data
 @api_router.get("/dashboard/complete")
-async def get_complete_dashboard(current_user: dict = Depends(get_current_user)):
-    """Get comprehensive dashboard data for user"""
+async def get_complete_dashboard():
+    """Get comprehensive dashboard data"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        user_id = current_user["id"]
         
-        # Basic financial data for user
-        cursor.execute('SELECT SUM(amount) as total FROM expenses WHERE user_id = ?', (user_id,))
+        # Basic financial data
+        cursor.execute('SELECT SUM(amount) as total FROM expenses')
         total_expenses = cursor.fetchone()['total'] or 0
         
-        cursor.execute('SELECT SUM(amount) as total FROM income WHERE user_id = ?', (user_id,))
+        cursor.execute('SELECT SUM(amount) as total FROM income')
         total_income = cursor.fetchone()['total'] or 0
         
-        cursor.execute('SELECT SUM(amount) as total FROM investments WHERE user_id = ?', (user_id,))
+        cursor.execute('SELECT SUM(amount) as total FROM investments')
         total_investments = cursor.fetchone()['total'] or 0
         
-        # Savings goals progress for user
-        cursor.execute('''
-            SELECT COUNT(*) as count, SUM(current_amount) as saved, SUM(target_amount) as target 
-            FROM savings_goals WHERE user_id = ?
-        ''', (user_id,))
+        # Savings goals progress
+        cursor.execute('SELECT COUNT(*) as count, SUM(current_amount) as saved, SUM(target_amount) as target FROM savings_goals')
         goals_data = cursor.fetchone()
         
-        # Budget alerts for user
+        # Budget alerts
         cursor.execute('''
             SELECT b.category, b.monthly_limit, b.alert_threshold,
                    COALESCE(SUM(e.amount), 0) as spent
             FROM budgets b
             LEFT JOIN expenses e ON b.category = e.category 
-                AND b.user_id = e.user_id
                 AND strftime('%Y-%m', e.date) = strftime('%Y-%m', 'now')
-            WHERE b.user_id = ?
             GROUP BY b.category, b.monthly_limit, b.alert_threshold
-        ''', (user_id,))
+        ''')
         budget_data = cursor.fetchall()
         
         budget_alerts = []
@@ -1845,20 +1333,18 @@ async def get_complete_dashboard(current_user: dict = Depends(get_current_user))
                     "percentage": round(percentage, 2)
                 })
         
-        # Investment breakdown for user
+        # Investment breakdown
         cursor.execute('''
             SELECT investment_type, SUM(amount) as total
             FROM investments
-            WHERE user_id = ?
             GROUP BY investment_type
             ORDER BY total DESC
-        ''', (user_id,))
+        ''')
         investment_breakdown = {row['investment_type']: row['total'] for row in cursor.fetchall()}
         
         conn.close()
         
         return {
-            "user_name": current_user["name"],
             "total_income": total_income,
             "total_expenses": total_expenses,
             "total_investments": total_investments,
@@ -1877,31 +1363,22 @@ async def get_complete_dashboard(current_user: dict = Depends(get_current_user))
         logging.error(f"Error fetching complete dashboard: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to fetch dashboard data")
 
-# Data Export Endpoint (Updated)
+# Data Export Endpoint
 @api_router.get("/export/{data_type}")
-async def export_data(
-    data_type: str, 
-    format: str = "csv",
-    current_user: dict = Depends(get_current_user)
-):
-    """Export user's data to CSV or JSON format"""
+async def export_data(data_type: str, format: str = "csv"):
+    """Export data to CSV or JSON format"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        user_id = current_user["id"]
         
         if data_type == "expenses":
-            cursor.execute('SELECT * FROM expenses WHERE user_id = ? ORDER BY date DESC', (user_id,))
+            cursor.execute('SELECT * FROM expenses ORDER BY date DESC')
         elif data_type == "income":
-            cursor.execute('SELECT * FROM income WHERE user_id = ? ORDER BY date DESC', (user_id,))
+            cursor.execute('SELECT * FROM income ORDER BY date DESC')
         elif data_type == "investments":
-            cursor.execute('SELECT * FROM investments WHERE user_id = ? ORDER BY date DESC', (user_id,))
+            cursor.execute('SELECT * FROM investments ORDER BY date DESC')
         elif data_type == "loans":
-            cursor.execute('SELECT * FROM loans WHERE user_id = ? ORDER BY created_at DESC', (user_id,))
-        elif data_type == "budgets":
-            cursor.execute('SELECT * FROM budgets WHERE user_id = ? ORDER BY category', (user_id,))
-        elif data_type == "savings_goals":
-            cursor.execute('SELECT * FROM savings_goals WHERE user_id = ? ORDER BY created_at DESC', (user_id,))
+            cursor.execute('SELECT * FROM loans ORDER BY created_at DESC')
         else:
             raise HTTPException(status_code=400, detail="Invalid data type")
         
@@ -1909,144 +1386,18 @@ async def export_data(
         conn.close()
         
         if format == "json":
-            return {"data": [dict(row) for row in data], "user": current_user["name"]}
+            return {"data": [dict(row) for row in data]}
         else:
             # For CSV, we'd normally use pandas but for simplicity, return JSON
-            return {"data": [dict(row) for row in data], "format": "csv", "user": current_user["name"]}
+            return {"data": [dict(row) for row in data], "format": "csv"}
         
-    except HTTPException:
-        raise
     except Exception as e:
         logging.error(f"Error exporting data: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to export data")
 
-# User Profile Management
-@api_router.put("/profile")
-async def update_profile(
-    name: Optional[str] = None,
-    current_user: dict = Depends(get_current_user)
-):
-    """Update user profile"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        update_fields = []
-        update_values = []
-        
-        if name:
-            update_fields.append("name = ?")
-            update_values.append(name)
-        
-        if not update_fields:
-            raise HTTPException(status_code=400, detail="No fields to update")
-        
-        update_fields.append("updated_at = CURRENT_TIMESTAMP")
-        update_values.append(current_user["id"])
-        
-        query = f"UPDATE users SET {', '.join(update_fields)} WHERE id = ?"
-        cursor.execute(query, update_values)
-        
-        conn.commit()
-        conn.close()
-        
-        return {"message": "Profile updated successfully"}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Error updating profile: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to update profile")
-
-# Delete User Account
-@api_router.delete("/account")
-async def delete_account(
-    password: str,
-    current_user: dict = Depends(get_current_user)
-):
-    """Delete user account and all associated data"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Verify password
-        cursor.execute("SELECT password_hash FROM users WHERE id = ?", (current_user["id"],))
-        user = cursor.fetchone()
-        
-        if not PasswordUtils.verify_password(password, user["password_hash"]):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Incorrect password"
-            )
-        
-        # Delete user (CASCADE will handle related data)
-        cursor.execute("DELETE FROM users WHERE id = ?", (current_user["id"],))
-        
-        conn.commit()
-        conn.close()
-        
-        return {"message": "Account deleted successfully"}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Error deleting account: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to delete account")
-
-# User Statistics
-@api_router.get("/stats")
-async def get_user_stats(current_user: dict = Depends(get_current_user)):
-    """Get user statistics"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        user_id = current_user["id"]
-        
-        # Basic counts
-        cursor.execute("SELECT COUNT(*) as count FROM expenses WHERE user_id = ?", (user_id,))
-        expense_count = cursor.fetchone()['count']
-        
-        cursor.execute("SELECT COUNT(*) as count FROM income WHERE user_id = ?", (user_id,))
-        income_count = cursor.fetchone()['count']
-        
-        cursor.execute("SELECT COUNT(*) as count FROM investments WHERE user_id = ?", (user_id,))
-        investment_count = cursor.fetchone()['count']
-        
-        cursor.execute("SELECT COUNT(*) as count FROM loans WHERE user_id = ?", (user_id,))
-        loan_count = cursor.fetchone()['count']
-        
-        cursor.execute("SELECT COUNT(*) as count FROM budgets WHERE user_id = ?", (user_id,))
-        budget_count = cursor.fetchone()['count']
-        
-        cursor.execute("SELECT COUNT(*) as count FROM savings_goals WHERE user_id = ?", (user_id,))
-        goals_count = cursor.fetchone()['count']
-        
-        # Account age
-        cursor.execute("SELECT created_at FROM users WHERE id = ?", (user_id,))
-        created_at = cursor.fetchone()['created_at']
-        
-        conn.close()
-        
-        return {
-            "user_name": current_user["name"],
-            "account_created": created_at,
-            "total_expenses": expense_count,
-            "total_income_records": income_count,
-            "total_investments": investment_count,
-            "total_loans": loan_count,
-            "total_budgets": budget_count,
-            "total_savings_goals": goals_count
-        }
-        
-    except Exception as e:
-        logging.error(f"Error fetching user stats: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to fetch user statistics")
-
-# Include routers in the main app
-app.include_router(auth_router)
+# Include the router in the main app
 app.include_router(api_router)
 
-# CORS Middleware
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
