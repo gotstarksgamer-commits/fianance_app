@@ -468,6 +468,38 @@ class BudgetResponse(BaseModel):
     percentage_used: float
     is_over_budget: bool
     created_at: str
+# Pydantic Models for Update Operations
+class UpdateIncome(BaseModel):
+    source: Optional[str] = None
+    amount: Optional[float] = None
+    date: Optional[str] = None
+    notes: Optional[str] = None
+
+class UpdateExpense(BaseModel):
+    category: Optional[str] = None
+    amount: Optional[float] = None
+    date: Optional[str] = None
+    description: Optional[str] = None
+
+class UpdateInvestment(BaseModel):
+    name: Optional[str] = None
+    type: Optional[str] = None
+    amount: Optional[float] = None
+    date: Optional[str] = None
+    notes: Optional[str] = None
+    
+class UpdateBudget(BaseModel):
+    category: Optional[str] = None
+    amount: Optional[float] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+
+class UpdateSavingsGoal(BaseModel):
+    name: Optional[str] = None
+    target_amount: Optional[float] = None
+    current_amount: Optional[float] = None
+    target_date: Optional[str] = None
+    notes: Optional[str] = None
 
 # Database helper functions
 def get_db_connection():
@@ -1007,6 +1039,73 @@ async def get_expenses(current_user: dict = Depends(get_current_user)):
         logging.error(f"Error fetching expenses: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to fetch expenses")
 
+@api_router.put("/expense/{expense_id}")
+def update_expense(expense_id: str, expense: UpdateExpense, current_user: dict = Depends(get_current_user)):
+    """Update an existing expense record."""
+    user_id = current_user["id"]
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("SELECT id FROM expenses WHERE id = ? AND user_id = ?", (expense_id, user_id))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Expense record not found or access denied")
+        
+        update_fields = []
+        update_values = []
+        if expense.category is not None:
+            update_fields.append("category = ?")
+            update_values.append(expense.category)
+        if expense.amount is not None:
+            update_fields.append("amount = ?")
+            update_values.append(expense.amount)
+        if expense.date is not None:
+            update_fields.append("date = ?")
+            update_values.append(expense.date)
+        if expense.description is not None:
+            update_fields.append("description = ?")
+            update_values.append(expense.description)
+
+        if not update_fields:
+            raise HTTPException(status_code=400, detail="No fields provided for update")
+            
+        query = f"UPDATE expenses SET {', '.join(update_fields)} WHERE id = ? AND user_id = ?"
+        update_values.extend([expense_id, user_id])
+        
+        cursor.execute(query, tuple(update_values))
+        conn.commit()
+        return {"message": "Expense record updated successfully"}
+        
+    except Exception as e:
+        conn.rollback()
+        logging.error(f"Error updating expense record: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update expense record")
+    finally:
+        conn.close()
+
+@api_router.delete("/expense/{expense_id}")
+def delete_expense(expense_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete an expense record."""
+    user_id = current_user["id"]
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("SELECT id FROM expenses WHERE id = ? AND user_id = ?", (expense_id, user_id))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Expense record not found or access denied")
+            
+        cursor.execute("DELETE FROM expenses WHERE id = ? AND user_id = ?", (expense_id, user_id))
+        conn.commit()
+        return {"message": "Expense record deleted successfully"}
+        
+    except Exception as e:
+        conn.rollback()
+        logging.error(f"Error deleting expense record: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete expense record")
+    finally:
+        conn.close()
+
 @api_router.get("/dashboard", response_model=DashboardResponse)
 async def get_dashboard(current_user: dict = Depends(get_current_user)):
     """Get dashboard data with user's financial overview"""
@@ -1447,6 +1546,74 @@ async def get_income(current_user: dict = Depends(get_current_user)):
         logging.error(f"Error fetching income: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to fetch income")
 
+@api_router.put("/income/{income_id}")
+def update_income(income_id: str, income: UpdateIncome, current_user: dict = Depends(get_current_user)):
+    """Update an existing income record."""
+    user_id = current_user["id"]
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # Check if the record exists and belongs to the user
+        cursor.execute("SELECT id FROM incomes WHERE id = ? AND user_id = ?", (income_id, user_id))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Income record not found or access denied")
+        
+        update_fields = []
+        update_values = []
+        if income.source is not None:
+            update_fields.append("source = ?")
+            update_values.append(income.source)
+        if income.amount is not None:
+            update_fields.append("amount = ?")
+            update_values.append(income.amount)
+        if income.date is not None:
+            update_fields.append("date = ?")
+            update_values.append(income.date)
+        if income.notes is not None:
+            update_fields.append("notes = ?")
+            update_values.append(income.notes)
+            
+        if not update_fields:
+            raise HTTPException(status_code=400, detail="No fields provided for update")
+            
+        query = f"UPDATE incomes SET {', '.join(update_fields)} WHERE id = ? AND user_id = ?"
+        update_values.extend([income_id, user_id])
+        
+        cursor.execute(query, tuple(update_values))
+        conn.commit()
+        return {"message": "Income record updated successfully"}
+        
+    except Exception as e:
+        conn.rollback()
+        logging.error(f"Error updating income record: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update income record")
+    finally:
+        conn.close()
+        
+@api_router.delete("/income/{income_id}")
+def delete_income(income_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete an income record."""
+    user_id = current_user["id"]
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # Check if the record exists and belongs to the user
+        cursor.execute("SELECT id FROM incomes WHERE id = ? AND user_id = ?", (income_id, user_id))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Income record not found or access denied")
+            
+        cursor.execute("DELETE FROM incomes WHERE id = ? AND user_id = ?", (income_id, user_id))
+        conn.commit()
+        return {"message": "Income record deleted successfully"}
+        
+    except Exception as e:
+        conn.rollback()
+        logging.error(f"Error deleting income record: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete income record")
+    finally:
+        conn.close()
 # Savings Goals Endpoints (Updated)
 @api_router.post("/savings-goals", response_model=SavingsGoalResponse)
 async def create_savings_goal(
@@ -1547,6 +1714,76 @@ async def update_savings_goal_progress(
         logging.error(f"Error updating savings goal: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to update savings goal")
 
+@api_router.put("/goal/{goal_id}")
+def update_savings_goal(goal_id: str, goal: UpdateSavingsGoal, current_user: dict = Depends(get_current_user)):
+    """Update an existing savings goal record."""
+    user_id = current_user["id"]
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("SELECT id FROM savings_goals WHERE id = ? AND user_id = ?", (goal_id, user_id))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Savings goal record not found or access denied")
+        
+        update_fields = []
+        update_values = []
+        if goal.name is not None:
+            update_fields.append("name = ?")
+            update_values.append(goal.name)
+        if goal.target_amount is not None:
+            update_fields.append("target_amount = ?")
+            update_values.append(goal.target_amount)
+        if goal.current_amount is not None:
+            update_fields.append("current_amount = ?")
+            update_values.append(goal.current_amount)
+        if goal.target_date is not None:
+            update_fields.append("target_date = ?")
+            update_values.append(goal.target_date)
+        if goal.notes is not None:
+            update_fields.append("notes = ?")
+            update_values.append(goal.notes)
+            
+        if not update_fields:
+            raise HTTPException(status_code=400, detail="No fields provided for update")
+            
+        query = f"UPDATE savings_goals SET {', '.join(update_fields)} WHERE id = ? AND user_id = ?"
+        update_values.extend([goal_id, user_id])
+        
+        cursor.execute(query, tuple(update_values))
+        conn.commit()
+        return {"message": "Savings goal record updated successfully"}
+        
+    except Exception as e:
+        conn.rollback()
+        logging.error(f"Error updating savings goal record: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update savings goal record")
+    finally:
+        conn.close()
+
+@api_router.delete("/goal/{goal_id}")
+def delete_savings_goal(goal_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete a savings goal record."""
+    user_id = current_user["id"]
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("SELECT id FROM savings_goals WHERE id = ? AND user_id = ?", (goal_id, user_id))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Savings goal record not found or access denied")
+            
+        cursor.execute("DELETE FROM savings_goals WHERE id = ? AND user_id = ?", (goal_id, user_id))
+        conn.commit()
+        return {"message": "Savings goal record deleted successfully"}
+        
+    except Exception as e:
+        conn.rollback()
+        logging.error(f"Error deleting savings goal record: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete savings goal record")
+    finally:
+        conn.close()
+
 # Investment Management Endpoints (Updated)
 @api_router.post("/investments", response_model=InvestmentResponse)
 async def create_investment(
@@ -1620,6 +1857,76 @@ async def get_investments(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         logging.error(f"Error fetching investments: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to fetch investments")
+
+@api_router.put("/investment/{investment_id}")
+def update_investment(investment_id: str, investment: UpdateInvestment, current_user: dict = Depends(get_current_user)):
+    """Update an existing investment record."""
+    user_id = current_user["id"]
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("SELECT id FROM investments WHERE id = ? AND user_id = ?", (investment_id, user_id))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Investment record not found or access denied")
+        
+        update_fields = []
+        update_values = []
+        if investment.name is not None:
+            update_fields.append("name = ?")
+            update_values.append(investment.name)
+        if investment.type is not None:
+            update_fields.append("type = ?")
+            update_values.append(investment.type)
+        if investment.amount is not None:
+            update_fields.append("amount = ?")
+            update_values.append(investment.amount)
+        if investment.date is not None:
+            update_fields.append("date = ?")
+            update_values.append(investment.date)
+        if investment.notes is not None:
+            update_fields.append("notes = ?")
+            update_values.append(investment.notes)
+
+        if not update_fields:
+            raise HTTPException(status_code=400, detail="No fields provided for update")
+            
+        query = f"UPDATE investments SET {', '.join(update_fields)} WHERE id = ? AND user_id = ?"
+        update_values.extend([investment_id, user_id])
+        
+        cursor.execute(query, tuple(update_values))
+        conn.commit()
+        return {"message": "Investment record updated successfully"}
+        
+    except Exception as e:
+        conn.rollback()
+        logging.error(f"Error updating investment record: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update investment record")
+    finally:
+        conn.close()
+
+@api_router.delete("/investment/{investment_id}")
+def delete_investment(investment_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete an investment record."""
+    user_id = current_user["id"]
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("SELECT id FROM investments WHERE id = ? AND user_id = ?", (investment_id, user_id))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Investment record not found or access denied")
+            
+        cursor.execute("DELETE FROM investments WHERE id = ? AND user_id = ?", (investment_id, user_id))
+        conn.commit()
+        return {"message": "Investment record deleted successfully"}
+        
+    except Exception as e:
+        conn.rollback()
+        logging.error(f"Error deleting investment record: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete investment record")
+    finally:
+        conn.close()
 
 # Budget Management Endpoints (Updated)
 @api_router.post("/budgets", response_model=BudgetResponse)
@@ -1733,6 +2040,73 @@ async def get_budgets(current_user: dict = Depends(get_current_user)):
         logging.error(f"Error fetching budgets: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to fetch budgets")
 
+@api_router.put("/budget/{budget_id}")
+def update_budget(budget_id: str, budget: UpdateBudget, current_user: dict = Depends(get_current_user)):
+    """Update an existing budget record."""
+    user_id = current_user["id"]
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("SELECT id FROM budgets WHERE id = ? AND user_id = ?", (budget_id, user_id))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Budget record not found or access denied")
+        
+        update_fields = []
+        update_values = []
+        if budget.category is not None:
+            update_fields.append("category = ?")
+            update_values.append(budget.category)
+        if budget.amount is not None:
+            update_fields.append("amount = ?")
+            update_values.append(budget.amount)
+        if budget.start_date is not None:
+            update_fields.append("start_date = ?")
+            update_values.append(budget.start_date)
+        if budget.end_date is not None:
+            update_fields.append("end_date = ?")
+            update_values.append(budget.end_date)
+            
+        if not update_fields:
+            raise HTTPException(status_code=400, detail="No fields provided for update")
+            
+        query = f"UPDATE budgets SET {', '.join(update_fields)} WHERE id = ? AND user_id = ?"
+        update_values.extend([budget_id, user_id])
+        
+        cursor.execute(query, tuple(update_values))
+        conn.commit()
+        return {"message": "Budget record updated successfully"}
+        
+    except Exception as e:
+        conn.rollback()
+        logging.error(f"Error updating budget record: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update budget record")
+    finally:
+        conn.close()
+
+@api_router.delete("/budget/{budget_id}")
+def delete_budget(budget_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete a budget record."""
+    user_id = current_user["id"]
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("SELECT id FROM budgets WHERE id = ? AND user_id = ?", (budget_id, user_id))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Budget record not found or access denied")
+            
+        cursor.execute("DELETE FROM budgets WHERE id = ? AND user_id = ?", (budget_id, user_id))
+        conn.commit()
+        return {"message": "Budget record deleted successfully"}
+        
+    except Exception as e:
+        conn.rollback()
+        logging.error(f"Error deleting budget record: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete budget record")
+    finally:
+        conn.close()
+        
 # File Upload Endpoint (Updated)
 @api_router.post("/upload-receipt/{expense_id}")
 async def upload_receipt(
